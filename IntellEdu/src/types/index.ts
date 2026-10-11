@@ -6,10 +6,12 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  phone?: string | null;
   grade: string;
   streak: number;
   points: number;
   avatar: string;
+  badge?: string | null;
 }
 
 export interface LoginFormData {
@@ -60,6 +62,7 @@ export interface Course {
   totalLessons: number;
   completedLessons: number;
   image: string;
+  rating?: number;
 }
 
 export interface LeaderboardEntry {

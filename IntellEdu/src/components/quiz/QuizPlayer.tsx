@@ -59,7 +59,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({ quiz, onFinish, onExit }
         )}
       >
         <div className="min-w-0">
-          <h3 className="text-sm sm:text-base font-extrabold text-slate-900 truncate">{quiz.title}</h3>
+          <h3 className="text-sm sm:text-base font-extrabold text-slate-900 truncate" data-no-translate>{quiz.title}</h3>
           <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
             Question {currentIndex + 1} of {quiz.questions.length} · {answeredCount} answered
           </p>
@@ -107,7 +107,7 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({ quiz, onFinish, onExit }
           <span className="w-7 h-7 rounded-xl bg-indigo-600 text-white text-xs font-black flex items-center justify-center shrink-0">
             {currentIndex + 1}
           </span>
-          <h4 className="text-sm sm:text-base font-bold text-slate-900 leading-snug pt-0.5">
+          <h4 className="text-sm sm:text-base font-bold text-slate-900 leading-snug pt-0.5" data-no-translate>
             {question.question}
           </h4>
         </div>

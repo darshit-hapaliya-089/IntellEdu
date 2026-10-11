@@ -1,164 +1,132 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { AuthUser, SignupFormData } from '../types';
+import React, { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { AuthUser } from '../types';
 import { getStoredValue, setStoredValue, removeStoredValue } from '../utils/storage';
-import { authApi, setAuthToken, removeAuthToken } from '../services/api';
-
-interface AuthContextValue {
-  user: AuthUser | null;
-  isLoggedIn: boolean;
-  login: (emailOrPhone: string, password: string) => Promise<void>;
-  signup: (data: SignupFormData) => Promise<void>;
-  logout: () => void;
-}
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
-const DEFAULT_MOCK_USER: AuthUser = {
-  id: 'usr_101',
-  name: 'Alex Johnson',
-  email: 'alex.student@intelledu.org',
-  grade: 'Class 10 Science',
-  streak: 14,
-  points: 2850,
-  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
-};
+import {
+  authApi,
+  AuthResponse,
+  getAuthToken,
+  setAuthToken,
+  removeAuthToken,
+  ApiError,
+} from '../services/api';
+import { firebaseAuthConfigured, getFirebaseAuth } from '../services/firebase';
+import { AuthContext, type AuthContextValue } from './authContextStore';
 
 interface AuthProviderProps {
   children: ReactNode;
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return getStoredValue<boolean>('intellEdu_isLoggedIn', false);
-  });
-
   const [user, setUser] = useState<AuthUser | null>(() => {
-    return getStoredValue<AuthUser | null>('intellEdu_user', isLoggedIn ? DEFAULT_MOCK_USER : null);
+    return getStoredValue<AuthUser | null>('intellEdu_user', null);
   });
+  const initialUser = useRef(user);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    return Boolean(getAuthToken() && getStoredValue<boolean>('intellEdu_isLoggedIn', false) && user);
+  });
+  const [isInitializing, setIsInitializing] = useState<boolean>(() => Boolean(getAuthToken() && user));
 
-  const login = async (emailOrPhone: string, password: string): Promise<void> => {
-    const email = emailOrPhone.includes('@') ? emailOrPhone : `${emailOrPhone}@student.intelledu.org`;
-
-    try {
-      // 1. Try real AdonisJS Backend API
-      const res = await authApi.login({ email, password });
-      if (res && res.token) {
-        setAuthToken(res.token);
-        const loggedUser: AuthUser = {
-          id: String(res.user.id),
-          name: res.user.fullName,
-          email: res.user.email,
-          grade: res.user.grade,
-          streak: res.user.streak || 1,
-          points: res.user.points || 100,
-          avatar: res.user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
-        };
-        setUser(loggedUser);
-        setIsLoggedIn(true);
-        setStoredValue('intellEdu_isLoggedIn', true);
-        setStoredValue('intellEdu_user', loggedUser);
-        return;
-      }
-    } catch (err) {
-      console.warn('Backend connection unavailable, using local mock session:', err);
-    }
-
-    // 2. Offline / Local fallback
-    await new Promise<void>((resolve) => setTimeout(resolve, 400));
-    const nameFromEmail = emailOrPhone.includes('@')
-      ? emailOrPhone.split('@')[0].replace('.', ' ')
-      : 'Student User';
-
-    const fallbackUser: AuthUser = {
-      id: `usr_${Date.now()}`,
-      name: nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1),
-      email,
-      grade: 'Class 10 Science',
-      streak: 14,
-      points: 2850,
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+  const saveUser = useCallback((profile: AuthResponse['user']) => {
+    const loggedUser: AuthUser = {
+      id: String(profile.id),
+      name: profile.fullName,
+      email: profile.email,
+      phone: profile.phone,
+      grade: profile.grade,
+      streak: profile.streak ?? 1,
+      points: profile.points ?? 100,
+      avatar: profile.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
+      badge: profile.badge,
     };
-
-    setUser(fallbackUser);
+    setUser(loggedUser);
     setIsLoggedIn(true);
     setStoredValue('intellEdu_isLoggedIn', true);
-    setStoredValue('intellEdu_user', fallbackUser);
-  };
+    setStoredValue('intellEdu_user', loggedUser);
+  }, []);
 
-  const signup = async (data: SignupFormData): Promise<void> => {
-    try {
-      // 1. Try real AdonisJS Backend API
-      const res = await authApi.register({
-        fullName: data.fullName,
-        email: data.email,
-        phone: data.phone,
-        password: data.password,
-        grade: data.grade,
+  useEffect(() => {
+    if (!getAuthToken() || !initialUser.current) return;
+
+    let active = true;
+    authApi.getProfile()
+      .then(({ user: profile }) => {
+        if (active) saveUser(profile);
+      })
+      .catch((reason: unknown) => {
+        if (!active) return;
+        if (reason instanceof ApiError && reason.status === 401) {
+          removeAuthToken();
+          removeStoredValue('intellEdu_isLoggedIn');
+          removeStoredValue('intellEdu_user');
+          setUser(null);
+          setIsLoggedIn(false);
+        } else {
+          console.error('Could not refresh the signed-in profile from the backend.', reason);
+        }
+      })
+      .finally(() => {
+        if (active) setIsInitializing(false);
       });
 
-      if (res && res.token) {
-        setAuthToken(res.token);
-        const newUser: AuthUser = {
-          id: String(res.user.id),
-          name: res.user.fullName,
-          email: res.user.email,
-          grade: res.user.grade,
-          streak: res.user.streak || 1,
-          points: res.user.points || 100,
-          avatar: res.user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
-        };
-        setUser(newUser);
-        setIsLoggedIn(true);
-        setStoredValue('intellEdu_isLoggedIn', true);
-        setStoredValue('intellEdu_user', newUser);
-        return;
-      }
-    } catch (err) {
-      console.warn('Backend connection unavailable, using local mock session:', err);
+    return () => { active = false; };
+  }, [saveUser]);
+
+  const saveSession = (res: AuthResponse) => {
+    if (!res.token || !res.user) {
+      throw new Error('The backend returned an invalid authentication response.');
     }
+    setAuthToken(res.token);
+    saveUser(res.user);
+  };
 
-    // 2. Offline / Local fallback
-    await new Promise<void>((resolve) => setTimeout(resolve, 500));
-    const fallbackUser: AuthUser = {
-      id: `usr_${Date.now()}`,
-      name: data.fullName,
-      email: data.email,
-      grade: data.grade,
-      streak: 1,
-      points: 100,
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
-    };
+  const login = async (emailOrPhone: string, password: string): Promise<void> => {
+    if (!emailOrPhone.includes('@')) {
+      throw new Error('Use your email and password, or sign in with phone verification.');
+    }
+    saveSession(await authApi.login({ email: emailOrPhone.trim(), password }));
+  };
 
-    setUser(fallbackUser);
-    setIsLoggedIn(true);
-    setStoredValue('intellEdu_isLoggedIn', true);
-    setStoredValue('intellEdu_user', fallbackUser);
+  const sendOtp: AuthContextValue['sendOtp'] = (data) => authApi.sendOtp(data);
+
+  const verifyOtp: AuthContextValue['verifyOtp'] = async (data) => {
+    saveSession(await authApi.verifyOtp(data));
+  };
+
+  const authenticateFirebase: AuthContextValue['authenticateFirebase'] = async (idToken, mode, profile) => {
+    saveSession(await authApi.firebase({ idToken, mode, ...profile }));
   };
 
   const logout = () => {
-    try {
-      authApi.logout().catch(() => {});
-    } catch {
-      // ignore
-    }
+    void authApi.logout().catch((error: unknown) => {
+      console.warn('Backend logout failed; local session was cleared.', error);
+    });
     removeAuthToken();
+    if (firebaseAuthConfigured) {
+      void getFirebaseAuth().then(async (auth) => {
+        const { signOut } = await import('@firebase/auth');
+        return signOut(auth);
+      }).catch((error: unknown) => {
+        console.warn('Firebase logout failed after clearing the local session.', error);
+      });
+    }
     setIsLoggedIn(false);
     setUser(null);
     removeStoredValue('intellEdu_isLoggedIn');
     removeStoredValue('intellEdu_user');
   };
 
+  const updateUser = useCallback((updatedData: Partial<AuthUser>) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...updatedData };
+      setStoredValue('intellEdu_user', updated);
+      return updated;
+    });
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, isLoggedIn, isInitializing, login, sendOtp, verifyOtp, authenticateFirebase, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = (): AuthContextValue => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };

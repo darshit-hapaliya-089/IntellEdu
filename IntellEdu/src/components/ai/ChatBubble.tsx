@@ -33,6 +33,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ sender, text }) => {
               ? 'bg-white text-slate-800 border border-slate-200 shadow-xs rounded-bl-none'
               : 'bg-white text-slate-800 border border-slate-300 rounded-bl-none'
         )}
+        data-no-translate
       >
         {text}
       </div>

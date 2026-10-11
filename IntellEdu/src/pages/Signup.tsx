@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Brain, Eye, EyeOff, Lock, Mail, User, Phone, GraduationCap, ArrowRight, Check } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, User, Phone, GraduationCap, Check } from 'lucide-react';
 import { usePerformanceMode } from '../context/PerformanceModeContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { SignupFormData } from '../types';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { cx } from '../utils/cx';
+import FirebaseAuthOptions from '../components/auth/FirebaseAuthOptions';
+import OtpVerificationPanel from '../components/auth/OtpVerificationPanel';
+import FirebasePhoneOtpPanel from '../components/auth/FirebasePhoneOtpPanel';
+import WhatsAppOtpPanel from '../components/auth/WhatsAppOtpPanel';
 
 type SignupErrors = Partial<Record<keyof SignupFormData, string>>;
 
 export const Signup: React.FC = () => {
   const { highGraphics } = usePerformanceMode();
-  const { signup } = useAuth();
+  const { sendOtp, verifyOtp, authenticateFirebase } = useAuth();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState<SignupFormData>({
@@ -28,12 +32,29 @@ export const Signup: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errors, setErrors] = useState<SignupErrors>({});
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [preferredOtpChannel, setPreferredOtpChannel] = useState<'email' | 'whatsapp' | null>(null);
+  const [phoneVerifiedIdToken, setPhoneVerifiedIdToken] = useState<string | null>(null);
+
+  const selectedChannel: 'whatsapp' | 'email' = preferredOtpChannel && (
+    preferredOtpChannel === 'whatsapp' ? formData.phone.trim() : formData.email.trim()
+  )
+    ? preferredOtpChannel
+    : formData.phone.trim() ? 'whatsapp' : 'email';
 
   const validate = (): boolean => {
     const newErrors: SignupErrors = {};
-    if (!formData.fullName.trim()) newErrors.fullName = 'Full Name is required.';
-    if (!formData.email.trim() || !formData.email.includes('@')) newErrors.email = 'Valid email is required.';
-    if (!formData.phone.trim()) newErrors.phone = 'Phone number is required.';
+    if (formData.fullName.trim().length < 2) newErrors.fullName = 'Enter your full name.';
+    if (formData.phone.trim() && !/^\+[1-9]\d{7,14}$/.test(formData.phone.trim())) {
+      newErrors.phone = 'Use international format, for example +919876543210.';
+    } else if (selectedChannel === 'whatsapp' && !formData.phone.trim()) {
+      newErrors.phone = 'Enter a phone number to receive the WhatsApp OTP.';
+    }
+    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      newErrors.email = 'Enter a valid email address.';
+    } else if (selectedChannel === 'email' && !formData.email.trim()) {
+      newErrors.email = 'Enter a valid email address.';
+    }
     if (!formData.password) newErrors.password = 'Password is required.';
     else if (formData.password.length < 6) newErrors.password = 'Password must be at least 6 characters.';
     if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match.';
@@ -43,18 +64,84 @@ export const Signup: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validate()) return;
+  const requestSignupOtp = async (channelOverride?: 'whatsapp' | 'email') => {
+    if (!validate()) throw new Error('Please fix the highlighted signup details first.');
+    const channel = channelOverride || selectedChannel;
+    const recipient = channel === 'whatsapp' ? formData.phone.trim() : formData.email.trim().toLowerCase();
+    return sendOtp({
+      channel,
+      flow: 'signup',
+      recipient,
+      fullName: formData.fullName.trim(),
+      email: formData.email.trim() ? formData.email.trim().toLowerCase() : undefined,
+      phone: formData.phone.trim() || undefined,
+      grade: formData.grade,
+    });
+  };
+
+  const verifySignupOtp = async (challengeId: string, code: string) => {
+    setIsSubmitting(true);
+    try {
+      await verifyOtp({ challengeId, code, password: formData.password });
+      navigate('/dashboard');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Called by FirebasePhoneOtpPanel when Firebase phone verification succeeds
+  const handleFirebasePhoneVerified = async (idToken: string) => {
+    setPhoneVerifiedIdToken(idToken);
+    setAuthError(null);
+    // Validate rest of signup form before creating account
+    const signupErrors: SignupErrors = {};
+    if (formData.fullName.trim().length < 2) signupErrors.fullName = 'Enter your full name.';
+    if (!formData.password) signupErrors.password = 'Password is required.';
+    else if (formData.password.length < 6) signupErrors.password = 'Password must be at least 6 characters.';
+    if (formData.password !== formData.confirmPassword) signupErrors.confirmPassword = 'Passwords do not match.';
+    if (!formData.acceptedTerms) signupErrors.acceptedTerms = 'You must accept the terms.';
+
+    if (Object.keys(signupErrors).length) {
+      setErrors((current) => ({ ...current, ...signupErrors }));
+      throw new Error('Fix the highlighted fields to complete phone sign-up.');
+    }
 
     setIsSubmitting(true);
     try {
-      await signup(formData);
+      await authenticateFirebase(idToken, 'signup', {
+        fullName: formData.fullName.trim(),
+        grade: formData.grade,
+      });
       navigate('/dashboard');
     } catch (err) {
-      console.error('Signup error:', err);
+      setAuthError(err instanceof Error ? err.message : 'Account creation failed after phone verification.');
+      throw err;
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleFirebaseAuth = async (idToken: string) => {
+    setAuthError(null);
+    const googleSignupErrors: SignupErrors = {};
+    if (formData.fullName.trim().length < 2) googleSignupErrors.fullName = 'Enter your full name.';
+    if (!formData.acceptedTerms) googleSignupErrors.acceptedTerms = 'You must accept the terms.';
+    if (Object.keys(googleSignupErrors).length) {
+      setErrors((current) => ({ ...current, ...googleSignupErrors }));
+      const message = 'Enter your name and accept the terms before continuing with Google.';
+      setAuthError(message);
+      throw new Error(message);
+    }
+
+    try {
+      await authenticateFirebase(idToken, 'signup', {
+        fullName: formData.fullName.trim(),
+        grade: formData.grade,
+      });
+      navigate('/dashboard');
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Verified signup failed.');
+      throw err;
     }
   };
 
@@ -86,11 +173,11 @@ export const Signup: React.FC = () => {
 
             <div className="space-y-4 sm:space-y-6 relative z-10">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center text-amber-300">
-                  <Brain className="w-5 h-5 sm:w-6 sm:h-6" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden shadow-md shadow-indigo-500/25">
+                  <img src="/intelledu-logo.png" alt="" className="w-full h-full object-cover" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="font-extrabold text-xl sm:text-2xl tracking-tight leading-none">IntellEdu</span>
+                  <span className="font-extrabold text-2xl sm:text-3xl tracking-tight leading-none">IntellEdu</span>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-200/90 leading-tight mt-0.5">
                     Smart Education
                   </span>
@@ -128,7 +215,7 @@ export const Signup: React.FC = () => {
               <p className="text-xs text-slate-500 mt-1">Fill in your details to set up your IntellEdu profile.</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-3.5">
+            <form onSubmit={(event) => event.preventDefault()} className="space-y-3 sm:space-y-3.5">
               {/* Full Name & Phone Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
                 <div>
@@ -158,16 +245,25 @@ export const Signup: React.FC = () => {
                   <div className="relative">
                     <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 shrink-0" />
                     <input
-                      type="text"
+                      type="tel"
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="e.g. 9876543210"
+                      placeholder="e.g. +919876543210"
                       className={cx(
                         'w-full pl-9 pr-3 py-2 rounded-xl text-xs sm:text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500',
                         errors.phone ? 'border-2 border-rose-500 bg-rose-50/30' : 'border border-slate-300 bg-slate-50/50'
                       )}
                     />
                   </div>
+                  {!!formData.phone.trim() && selectedChannel === 'whatsapp' && (
+                    <WhatsAppOtpPanel
+                      key={`signup-whatsapp-${formData.phone.trim()}`}
+                      recipient={formData.phone.trim()}
+                      disabled={isSubmitting || !formData.acceptedTerms}
+                      onSend={() => requestSignupOtp('whatsapp')}
+                      onVerify={verifySignupOtp}
+                    />
+                  )}
                   {errors.phone && <p className="text-[10px] text-rose-500 mt-0.5">{errors.phone}</p>}
                 </div>
               </div>
@@ -176,7 +272,7 @@ export const Signup: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Email Address
+                    Email Address{formData.phone.trim() ? ' (optional)' : ''}
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 shrink-0" />
@@ -191,6 +287,16 @@ export const Signup: React.FC = () => {
                       )}
                     />
                   </div>
+                  {!!formData.email.trim() && selectedChannel === 'email' && (
+                    <OtpVerificationPanel
+                      key={`signup-email-${formData.email.trim()}`}
+                      channel="email"
+                      recipient={formData.email.trim()}
+                      disabled={isSubmitting || !formData.acceptedTerms}
+                      onSend={requestSignupOtp}
+                      onVerify={verifySignupOtp}
+                    />
+                  )}
                   {errors.email && <p className="text-[10px] text-rose-500 mt-0.5">{errors.email}</p>}
                 </div>
 
@@ -215,6 +321,41 @@ export const Signup: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {formData.phone.trim() && formData.email.trim() && (
+                <fieldset className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <legend className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                    Choose where to receive your OTP
+                  </legend>
+                  <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-700">
+                    <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-emerald-700">
+                      <input
+                        type="radio"
+                        name="signup-otp-channel"
+                        value="whatsapp"
+                        checked={selectedChannel === 'whatsapp'}
+                        onChange={() => setPreferredOtpChannel('whatsapp')}
+                        className="accent-emerald-600"
+                      />
+                      WhatsApp OTP (Free)
+                    </label>
+                    <label className="inline-flex cursor-pointer items-center gap-2">
+                      <input
+                        type="radio"
+                        name="signup-otp-channel"
+                        value="email"
+                        checked={selectedChannel === 'email'}
+                        onChange={() => setPreferredOtpChannel('email')}
+                        className="accent-indigo-600"
+                      />
+                      Email address
+                    </label>
+                  </div>
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    Only the contact you verify will be marked as verified.
+                  </p>
+                </fieldset>
+              )}
 
               {/* Password & Confirm Password */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5">
@@ -281,27 +422,16 @@ export const Signup: React.FC = () => {
                 {errors.acceptedTerms && <p className="text-[10px] text-rose-500 mt-0.5">{errors.acceptedTerms}</p>}
               </div>
 
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className={cx(
-                  'w-full py-3 px-4 rounded-xl text-xs sm:text-sm font-extrabold text-white flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98 shadow-md mt-2',
-                  highGraphics
-                    ? 'bg-linear-to-r from-indigo-600 to-violet-600 shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:scale-101'
-                    : 'bg-indigo-600 hover:bg-indigo-700'
-                )}
-              >
-                {isSubmitting ? (
-                  <span>Creating Account...</span>
-                ) : (
-                  <>
-                    <span>Create Free Account</span>
-                    <ArrowRight className="w-4 h-4 shrink-0" />
-                  </>
-                )}
-              </button>
+              <p className="text-center text-[11px] text-slate-500">
+                {selectedChannel === 'whatsapp'
+                  ? 'WhatsApp is selected for verification. Any email entered is saved.'
+                  : 'The email address is selected for verification. Any phone number entered is saved.'}
+                {' '}The 6-digit OTP expires in 60 seconds.
+              </p>
             </form>
+
+            {authError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-600">{authError}</p>}
+            <FirebaseAuthOptions mode="signup" canAuthenticate={formData.fullName.trim().length >= 2 && formData.acceptedTerms} onAuthenticate={handleFirebaseAuth} />
 
             <div className="mt-4 text-center text-xs text-slate-500">
               Already have an account?{' '}

@@ -6,7 +6,6 @@ import {
   X,
   LogOut,
   LayoutDashboard,
-  User,
   ChevronDown,
   Sparkles,
   Flame,
@@ -14,7 +13,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { usePerformanceMode } from '../context/PerformanceModeContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import PerformanceToggle from './PerformanceToggle';
 import LanguageSelector from './LanguageSelector';
 import { cx } from '../utils/cx';
@@ -22,23 +21,21 @@ import { cx } from '../utils/cx';
 export const Navbar: React.FC = () => {
   const { highGraphics, t } = usePerformanceMode();
   const { isLoggedIn, user, logout } = useAuth();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
-  const [userDropdownOpen, setUserDropdownOpen] = useState<boolean>(false);
+  const [mobileMenuState, setMobileMenuState] = useState<{ path: string; open: boolean } | null>(null);
+  const [userDropdownState, setUserDropdownState] = useState<{ path: string; open: boolean } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
-
-  // Close mobile menu & dropdown on route change
-  useEffect(() => {
-    setMobileMenuOpen(false);
-    setUserDropdownOpen(false);
-  }, [location.pathname]);
+  const mobileMenuOpen = mobileMenuState?.path === location.pathname && mobileMenuState.open;
+  const userDropdownOpen = userDropdownState?.path === location.pathname && userDropdownState.open;
+  const setMobileMenuOpen = (open: boolean) => setMobileMenuState({ path: location.pathname, open });
+  const setUserDropdownOpen = (open: boolean) => setUserDropdownState({ path: location.pathname, open });
 
   // Close dropdown when clicked outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setUserDropdownOpen(false);
+        setUserDropdownState({ path: location.pathname, open: false });
       }
     };
     if (userDropdownOpen) {
@@ -47,7 +44,7 @@ export const Navbar: React.FC = () => {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [userDropdownOpen]);
+  }, [location.pathname, userDropdownOpen]);
 
   const handleLogout = () => {
     logout();
@@ -76,17 +73,12 @@ export const Navbar: React.FC = () => {
         <div className="flex items-center justify-between h-14 sm:h-16 gap-3">
 
           {/* IntellEdu Logo (Left Edge) */}
-          <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group shrink-0 min-w-0">
-            <div
-              className={cx(
-                'w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all duration-300 shrink-0',
-                highGraphics
-                  ? 'bg-linear-to-tr from-indigo-600 via-indigo-700 to-violet-600 text-white shadow-md shadow-indigo-500/30 group-hover:scale-105'
-                  : 'bg-indigo-600 text-white'
-              )}
-            >
-              <Brain className="w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
+          <Link to="/" className="flex items-center gap-2.5 sm:gap-3 group shrink-0 min-w-0">
+            <img
+              src="/intelledu-logo.png"
+              alt=""
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl object-cover shrink-0 transition-transform duration-300 group-hover:scale-105"
+            />
             <div className="flex flex-col min-w-0">
               <span className="font-extrabold text-base sm:text-xl tracking-tight text-slate-900 leading-none">
                 Intell<span className="text-indigo-600">Edu</span>

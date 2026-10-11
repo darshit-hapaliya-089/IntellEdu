@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import type { Language } from '../types';
 import { getStoredValue, setStoredValue } from '../utils/storage';
+import { getUiTranslation } from './uiTranslations';
 
 interface PerformanceModeContextValue {
   highGraphics: boolean;
@@ -104,6 +105,9 @@ const translations: Record<Language, Record<string, string>> = {
   }
 };
 
+const translateUiText = (language: Language, text: string): string | undefined =>
+  getUiTranslation(language, text) ?? translations[language]?.[text];
+
 /**
  * Custom hook to detect mobile viewport (<768px)
  */
@@ -133,6 +137,10 @@ interface ProviderProps {
 
 export const PerformanceModeProvider: React.FC<ProviderProps> = ({ children }) => {
   const isMobile = useIsMobile();
+  const originalText = useRef(new WeakMap<Text, string>());
+  const translatedText = useRef(new WeakMap<Text, string>());
+  const originalAttributes = useRef(new WeakMap<Element, Map<string, string>>());
+  const translatedAttributes = useRef(new WeakMap<Element, Map<string, string>>());
 
   const [highGraphics, setHighGraphicsState] = useState<boolean>(() => {
     return getStoredValue<boolean>('intellEdu_highGraphics', !isMobile);
@@ -141,6 +149,100 @@ export const PerformanceModeProvider: React.FC<ProviderProps> = ({ children }) =
   const [language, setLanguageState] = useState<Language>(() => {
     return getStoredValue<Language>('intellEdu_language', 'en');
   });
+
+  useEffect(() => {
+    const excludedSelector = 'script, style, code, pre, input, textarea, [contenteditable="true"], [data-no-translate], .markdown-viewer, .prose';
+    const textWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+
+    const translateTextNode = (node: Text) => {
+      const parent = node.parentElement;
+      if (!parent || parent.closest(excludedSelector)) return;
+
+      const value = node.nodeValue ?? '';
+      const previousTranslation = translatedText.current.get(node);
+      let source = originalText.current.get(node);
+      if (source === undefined || value !== previousTranslation) {
+        source = value;
+        originalText.current.set(node, source);
+      }
+
+      const trimmed = source.trim().replace(/\s+/g, ' ');
+      const translation = language === 'en' ? undefined : translateUiText(language, trimmed);
+      const leading = source.match(/^\s*/)?.[0] ?? '';
+      const trailing = source.match(/\s*$/)?.[0] ?? '';
+      const nextValue = translation ? `${leading}${translation}${trailing}` : source;
+
+      if (node.nodeValue !== nextValue) {
+        translatedText.current.set(node, nextValue);
+        node.nodeValue = nextValue;
+      } else {
+        translatedText.current.set(node, nextValue);
+      }
+    };
+
+    const translateAttributes = (element: Element) => {
+      if (element.closest(excludedSelector)) return;
+      const values = originalAttributes.current.get(element) ?? new Map<string, string>();
+      const outputs = translatedAttributes.current.get(element) ?? new Map<string, string>();
+
+      for (const attribute of ['placeholder', 'aria-label', 'title']) {
+        const current = element.getAttribute(attribute);
+        if (current === null) continue;
+        const previousTranslation = outputs.get(attribute);
+        let source = values.get(attribute);
+        if (source === undefined || current !== previousTranslation) {
+          source = current;
+          values.set(attribute, source);
+        }
+        const translation = language === 'en' ? undefined : translateUiText(language, source.trim().replace(/\s+/g, ' '));
+        const nextValue = translation ?? source;
+        if (current !== nextValue) element.setAttribute(attribute, nextValue);
+        outputs.set(attribute, nextValue);
+      }
+
+      originalAttributes.current.set(element, values);
+      translatedAttributes.current.set(element, outputs);
+    };
+
+    const translateSubtree = (root: Node) => {
+      if (root.nodeType === Node.TEXT_NODE) {
+        translateTextNode(root as Text);
+        return;
+      }
+
+      if (root instanceof Element) translateAttributes(root);
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) translateTextNode(walker.currentNode as Text);
+      if (root instanceof Element) {
+        root.querySelectorAll('*').forEach(translateAttributes);
+      }
+    };
+
+    while (textWalker.nextNode()) translateTextNode(textWalker.currentNode as Text);
+    document.body.querySelectorAll('*').forEach(translateAttributes);
+
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === 'characterData' && record.target instanceof Text) {
+          translateTextNode(record.target);
+        } else if (record.type === 'attributes' && record.target instanceof Element) {
+          translateAttributes(record.target);
+        } else {
+          record.addedNodes.forEach(translateSubtree);
+        }
+      }
+    });
+
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['placeholder', 'aria-label', 'title'],
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+
+    return () => observer.disconnect();
+  }, [language]);
 
   const toggleHighGraphics = () => {
     setHighGraphicsState(prev => {

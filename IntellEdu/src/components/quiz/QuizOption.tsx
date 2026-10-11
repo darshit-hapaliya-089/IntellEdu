@@ -41,7 +41,7 @@ export const QuizOption: React.FC<QuizOptionProps> = ({ index, text, isSelected,
       >
         {LETTERS[index] ?? index + 1}
       </span>
-      <span className={cx('text-xs sm:text-sm font-semibold leading-snug pt-0.5', isSelected ? 'text-indigo-900' : 'text-slate-700')}>
+      <span className={cx('text-xs sm:text-sm font-semibold leading-snug pt-0.5', isSelected ? 'text-indigo-900' : 'text-slate-700')} data-no-translate>
         {text}
       </span>
     </button>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Brain, MessageSquare, Globe, Code2, Share2, PlayCircle, Heart } from 'lucide-react';
+import { MessageSquare, Globe, Code2, Share2, PlayCircle, Heart } from 'lucide-react';
 import { usePerformanceMode } from '../context/PerformanceModeContext';
 import { cx } from '../utils/cx';
 
@@ -27,16 +27,7 @@ export const Footer: React.FC = () => {
           {/* Column 1: Brand */}
           <div className="sm:col-span-2 space-y-4">
             <Link to="/" className="flex items-center gap-2.5">
-              <div
-                className={cx(
-                  'w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0',
-                  highGraphics
-                    ? 'bg-linear-to-tr from-indigo-500 to-violet-500 text-white shadow-lg shadow-indigo-500/30'
-                    : 'bg-indigo-600 text-white'
-                )}
-              >
-                <Brain className="w-5 h-5" />
-              </div>
+              <img src="/intelledu-logo.png" alt="" className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover shrink-0 shadow-md shadow-indigo-500/20" />
               <div className="flex flex-col">
                 <span className="font-extrabold text-lg sm:text-xl tracking-tight text-white leading-none">
                   Intell<span className="text-indigo-400">Edu</span>

@@ -9,9 +9,10 @@ export interface Friend {
   streak: number;
   status: PresenceStatus;
   subjectFocus: string;
-  /** Whether the current student has this person in their circle. */
   added: boolean;
   mutualFriends: number;
+  location?: string;
+  isNearby?: boolean;
 }
 
 export interface WorldMember {

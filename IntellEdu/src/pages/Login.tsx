@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Brain, Eye, EyeOff, Lock, Mail, ArrowRight, Check } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, ArrowRight, Check } from 'lucide-react';
 import { usePerformanceMode } from '../context/PerformanceModeContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { LoginFormData } from '../types';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { cx } from '../utils/cx';
+import FirebaseAuthOptions from '../components/auth/FirebaseAuthOptions';
+import OtpVerificationPanel from '../components/auth/OtpVerificationPanel';
+import FirebasePhoneOtpPanel from '../components/auth/FirebasePhoneOtpPanel';
+import WhatsAppOtpPanel from '../components/auth/WhatsAppOtpPanel';
 
 type FormErrors = Partial<Record<keyof LoginFormData, string>>;
 
 export const Login: React.FC = () => {
   const { highGraphics } = usePerformanceMode();
-  const { login } = useAuth();
+  const { login, sendOtp, verifyOtp, authenticateFirebase } = useAuth();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState<LoginFormData>({
@@ -24,11 +28,14 @@ export const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {};
     if (!formData.emailOrPhone.trim()) {
       newErrors.emailOrPhone = 'Email or phone number is required.';
+    } else if (!formData.emailOrPhone.includes('@')) {
+      newErrors.emailOrPhone = 'Password sign-in uses email. For phone sign-in, use the SMS OTP below.';
     }
     if (!formData.password) {
       newErrors.password = 'Password is required.';
@@ -39,18 +46,46 @@ export const Login: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
+  const requestLoginOtp = (channelOverride?: 'whatsapp' | 'email') => {
+    const recipient = formData.emailOrPhone.trim();
+    if (!recipient) throw new Error('Enter the email address or phone number for your account.');
+    const channel = channelOverride || (recipient.includes('@') ? 'email' : 'whatsapp');
+    return sendOtp({
+      channel,
+      flow: 'login',
+      recipient: channel === 'email' ? recipient.toLowerCase() : recipient,
+    });
+  };
+
+  const verifyLoginOtp = async (challengeId: string, code: string) => {
+    await verifyOtp({ challengeId, code });
+    navigate('/dashboard');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
     setIsSubmitting(true);
+    setAuthError(null);
     try {
       await login(formData.emailOrPhone, formData.password);
       navigate('/dashboard');
     } catch (err) {
-      console.error('Login error:', err);
+      setAuthError(err instanceof Error ? err.message : 'Sign in failed.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleFirebaseAuth = async (idToken: string) => {
+    setAuthError(null);
+    try {
+      await authenticateFirebase(idToken, 'login');
+      navigate('/dashboard');
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Verified sign in failed.');
+      throw err;
     }
   };
 
@@ -82,11 +117,11 @@ export const Login: React.FC = () => {
 
             <div className="space-y-4 sm:space-y-6 relative z-10">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center text-amber-300">
-                  <Brain className="w-5 h-5 sm:w-6 sm:h-6" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden shadow-md shadow-indigo-500/25">
+                  <img src="/intelledu-logo.png" alt="" className="w-full h-full object-cover" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="font-extrabold text-xl sm:text-2xl tracking-tight leading-none">IntellEdu</span>
+                  <span className="font-extrabold text-2xl sm:text-3xl tracking-tight leading-none">IntellEdu</span>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-200/90 leading-tight mt-0.5">
                     Smart Education
                   </span>
@@ -128,15 +163,16 @@ export const Login: React.FC = () => {
               {/* Email / Phone Field */}
               <div>
                 <label className="block text-[11px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Email or Phone Number
+                  Email or phone number
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 shrink-0" />
                   <input
                     type="text"
+                    autoComplete="username"
                     value={formData.emailOrPhone}
                     onChange={(e) => setFormData({ ...formData, emailOrPhone: e.target.value })}
-                    placeholder="Enter your email or phone number"
+                    placeholder="Email or phone in international format (+919876543210)"
                     className={cx(
                       'w-full pl-10 pr-4 py-2.5 rounded-xl text-xs sm:text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500',
                       errors.emailOrPhone
@@ -147,6 +183,25 @@ export const Login: React.FC = () => {
                 </div>
                 {errors.emailOrPhone && (
                   <p className="text-[11px] font-semibold text-rose-500 mt-1">{errors.emailOrPhone}</p>
+                )}
+                {formData.emailOrPhone.trim() && (
+                  formData.emailOrPhone.includes('@') ? (
+                    <OtpVerificationPanel
+                      key={`login-email-${formData.emailOrPhone.trim()}`}
+                      channel="email"
+                      recipient={formData.emailOrPhone.trim()}
+                      onSend={() => requestLoginOtp('email')}
+                      onVerify={verifyLoginOtp}
+                    />
+                  ) : (
+                    <WhatsAppOtpPanel
+                      key={`login-whatsapp-${formData.emailOrPhone.trim()}`}
+                      recipient={formData.emailOrPhone.trim()}
+                      disabled={isSubmitting}
+                      onSend={() => requestLoginOtp('whatsapp')}
+                      onVerify={verifyLoginOtp}
+                    />
+                  )
                 )}
               </div>
 
@@ -220,6 +275,9 @@ export const Login: React.FC = () => {
                 )}
               </button>
             </form>
+
+            {authError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-600">{authError}</p>}
+            <FirebaseAuthOptions mode="login" onAuthenticate={handleFirebaseAuth} />
 
             <div className="mt-5 text-center text-xs text-slate-500">
               Don't have an IntellEdu account?{' '}

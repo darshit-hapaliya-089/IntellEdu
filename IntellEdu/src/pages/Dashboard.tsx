@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   BookOpen,
@@ -11,53 +11,35 @@ import {
   Bell,
   Flame,
   Award,
-  Zap,
-  ChevronRight,
   Menu,
   X,
-  Send,
   Sparkles,
-  CheckCircle2,
   Home,
   ArrowRight,
-  User,
-  Star,
+  Users,
   BellRing,
-  Gift,
-  CheckCheck
 } from 'lucide-react';
 import { usePerformanceMode } from '../context/PerformanceModeContext';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import {
   SidebarItem,
-  SidebarKey,
-  DashboardStat,
-  Course,
-  LeaderboardEntry
+  SidebarKey
 } from '../types';
-import CourseCard from '../components/CourseCard';
-import MarkdownViewer from '../components/MarkdownViewer';
 import PerformanceToggle from '../components/PerformanceToggle';
 import LanguageSelector from '../components/LanguageSelector';
 import { cx } from '../utils/cx';
-
-// Raw Markdown import for Today's Lesson Notes
-import courseIntroMd from '../content/course-intro.md?raw';
 
 export const Dashboard: React.FC = () => {
   const { highGraphics } = usePerformanceMode();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [activeTab, setActiveTab] = useState<SidebarKey>('overview');
+  const activeTab = (location.pathname.split('/')[2] as SidebarKey | undefined) || 'overview';
   const [bouncingTab, setBouncingTab] = useState<SidebarKey | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
   const [notificationsOpen, setNotificationsOpen] = useState<boolean>(false);
   const [profileOpen, setProfileOpen] = useState<boolean>(false);
-  const [chatInput, setChatInput] = useState<string>('');
-  const [chatMessages, setChatMessages] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([
-    { sender: 'ai', text: "Hello! I'm your IntellEdu AI Tutor. Ask me any science, math, or coding doubt!" }
-  ]);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -93,11 +75,11 @@ export const Dashboard: React.FC = () => {
     navigate('/');
   };
 
-  // Premium tab switch: bounce the icon then change tab
+  // Premium tab switch: bounce the icon then navigate to its page
   const handleTabChange = (key: SidebarKey) => {
     if (key === activeTab) return;
     setBouncingTab(key);
-    setActiveTab(key);
+    navigate(key === 'overview' ? '/dashboard' : `/dashboard/${key}`);
     setTimeout(() => setBouncingTab(null), 480);
   };
 
@@ -106,6 +88,7 @@ export const Dashboard: React.FC = () => {
     { key: 'courses', label: 'My Courses', icon: BookOpen },
     { key: 'doubts', label: 'AI Doubt Solver', icon: Brain },
     { key: 'quizzes', label: 'Quizzes & XP', icon: Trophy },
+    { key: 'community', label: 'Leaderboard & Friends', icon: Users },
     { key: 'progress', label: 'Progress & Stats', icon: BarChart3 },
     { key: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -114,77 +97,12 @@ export const Dashboard: React.FC = () => {
   const bottomNavItems: Array<{ key: SidebarKey; label: string; icon: typeof LayoutDashboard }> = [
     { key: 'overview', label: 'Home', icon: LayoutDashboard },
     { key: 'courses', label: 'Courses', icon: BookOpen },
-    { key: 'doubts', label: 'AI Doubts', icon: Brain },
+    { key: 'doubts', label: 'AI', icon: Brain },
     { key: 'quizzes', label: 'Quizzes', icon: Trophy },
+    { key: 'community', label: 'Ranks', icon: Users },
+    { key: 'progress', label: 'Progress', icon: BarChart3 },
     { key: 'settings', label: 'Settings', icon: Settings },
   ];
-
-  // Typed Mock Dashboard Stats
-  const stats: DashboardStat[] = [
-    { id: 'ds1', title: 'Courses in Progress', value: 4, label: '2 near completion', icon: BookOpen, color: 'indigo' },
-    { id: 'ds2', title: 'Quizzes Completed', value: 28, label: '+4 this week', icon: Trophy, color: 'emerald' },
-    { id: 'ds3', title: 'Current Streak', value: `${user?.streak || 14} Days`, label: 'Personal best!', icon: Flame, color: 'amber' },
-    { id: 'ds4', title: 'Total XP Points', value: user?.points || 2850, label: 'Level 8 Scholar', icon: Award, color: 'purple' },
-  ];
-
-  // Typed Mock Courses
-  const courses: Course[] = [
-    {
-      id: 'c1',
-      title: 'Class 10 Science: Chemical Reactions & Equations',
-      category: 'Chemistry',
-      progressPercent: 75,
-      totalLessons: 12,
-      completedLessons: 9,
-      image: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=600&q=80'
-    },
-    {
-      id: 'c2',
-      title: 'Introduction to AI & Python Machine Learning',
-      category: 'Computer Science',
-      progressPercent: 45,
-      totalLessons: 16,
-      completedLessons: 7,
-      image: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=600&q=80'
-    },
-    {
-      id: 'c3',
-      title: 'Interactive Physics: Electricity & Magnetism',
-      category: 'Physics',
-      progressPercent: 30,
-      totalLessons: 10,
-      completedLessons: 3,
-      image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&w=600&q=80'
-    }
-  ];
-
-  // Typed Mock Leaderboard
-  const leaderboard: LeaderboardEntry[] = [
-    { rank: 1, name: 'Priya Sharma', points: 3420, avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80', badge: '🥇 Master', streak: 21 },
-    { rank: 2, name: 'Alex Johnson (You)', points: user?.points || 2850, avatar: user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80', badge: '🥈 Diamond', streak: user?.streak || 14 },
-    { rank: 3, name: 'Rahul Patel', points: 2610, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80', badge: '🥉 Gold', streak: 12 },
-    { rank: 4, name: 'Ananya Gupta', points: 2400, avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&q=80', badge: '⭐ Gold', streak: 9 },
-    { rank: 5, name: 'Devansh Mehta', points: 2150, avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80', badge: '⭐ Silver', streak: 7 },
-  ];
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-
-    const userText = chatInput;
-    setChatMessages(prev => [...prev, { sender: 'user', text: userText }]);
-    setChatInput('');
-
-    setTimeout(() => {
-      setChatMessages(prev => [
-        ...prev,
-        {
-          sender: 'ai',
-          text: `Great question about "${userText}"! Here is the AI step-by-step breakdown: First, break down the core variables, apply the standard formula, and verify units.`
-        }
-      ]);
-    }, 600);
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row text-slate-900 sidebar-none overflow-x-hidden">
@@ -213,13 +131,13 @@ export const Dashboard: React.FC = () => {
           >
             <div
               className={cx(
-                'w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 transition-transform group-hover:scale-105',
+                'w-12 h-12 rounded-2xl flex items-center justify-center text-white shrink-0 transition-transform group-hover:scale-105',
                 highGraphics
                   ? 'bg-linear-to-tr from-indigo-500 to-violet-500 shadow-md shadow-indigo-500/30'
                   : 'bg-indigo-600'
               )}
             >
-              <Brain className="w-5 h-5" />
+              <img src="/intelledu-logo.png" alt="" className="w-full h-full rounded-2xl object-cover" />
             </div>
             <div className="flex flex-col">
               <span className="font-extrabold text-base sm:text-lg text-white tracking-tight leading-none">
@@ -324,7 +242,7 @@ export const Dashboard: React.FC = () => {
             </button>
 
             <h1 className="text-sm sm:text-base lg:text-lg font-bold text-slate-900 capitalize truncate">
-              {activeTab === 'doubts' ? 'AI Doubt Solver' : activeTab}
+              {sidebarItems.find((item) => item.key === activeTab)?.label ?? 'Overview'}
             </h1>
           </div>
           {/* Top Bar Right Controls */}
@@ -350,11 +268,6 @@ export const Dashboard: React.FC = () => {
                   ? <BellRing className="w-4 h-4 sm:w-5 sm:h-5" />
                   : <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
                 }
-                {/* Animated unread badge */}
-                <span className={cx(
-                  'absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 border-2 border-white',
-                  highGraphics && 'animate-pulse'
-                )} />
               </button>
 
               {notificationsOpen && (
@@ -382,86 +295,15 @@ export const Dashboard: React.FC = () => {
                       </div>
                       <span className="text-sm font-extrabold text-slate-900">Notifications</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={cx(
-                        'px-2 py-0.5 rounded-full text-[10px] font-black',
-                        highGraphics
-                          ? 'bg-linear-to-r from-rose-500 to-pink-500 text-white shadow-xs'
-                          : 'bg-rose-100 text-rose-700'
-                      )}>
-                        2 New
-                      </span>
-                      <button
-                        onClick={() => setNotificationsOpen(false)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Notification items */}
-                  <div className="p-2.5 space-y-2">
-                    {/* Notification 1 — Streak Reward */}
-                    <div className={cx(
-                      'group flex items-start gap-3 p-3 rounded-2xl transition-all duration-200 cursor-pointer',
-                      highGraphics
-                        ? 'bg-amber-50/60 hover:bg-amber-50 border border-amber-100/80'
-                        : 'bg-amber-50 border border-amber-100'
-                    )}>
-                      <div className={cx(
-                        'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-xs',
-                        highGraphics
-                          ? 'bg-linear-to-br from-amber-400 to-orange-500 text-white'
-                          : 'bg-amber-400 text-white'
-                      )}>
-                        <Flame className="w-4 h-4 fill-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-extrabold text-slate-900 leading-tight">Streak Reward!</p>
-                        <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
-                          You earned <span className="font-bold text-amber-600">+50 bonus XP</span> for your 14-day streak. Keep it up!
-                        </p>
-                        <span className="text-[10px] text-slate-400 mt-1 block font-medium">2 min ago</span>
-                      </div>
-                      <Gift className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                    </div>
-
-                    {/* Notification 2 — New Module */}
-                    <div className={cx(
-                      'group flex items-start gap-3 p-3 rounded-2xl transition-all duration-200 cursor-pointer',
-                      highGraphics
-                        ? 'bg-indigo-50/60 hover:bg-indigo-50 border border-indigo-100/80'
-                        : 'bg-indigo-50 border border-indigo-100'
-                    )}>
-                      <div className={cx(
-                        'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-xs',
-                        highGraphics
-                          ? 'bg-linear-to-br from-indigo-500 to-violet-600 text-white'
-                          : 'bg-indigo-500 text-white'
-                      )}>
-                        <BookOpen className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-extrabold text-slate-900 leading-tight">New Module Unlocked!</p>
-                        <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
-                          <span className="font-bold text-indigo-600">Chemical Reactions & Equations</span> is now ready to start.
-                        </p>
-                        <span className="text-[10px] text-slate-400 mt-1 block font-medium">1 hour ago</span>
-                      </div>
-                      <Star className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
-                    </div>
-                  </div>
-
-                  {/* Footer */}
-                  <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between">
-                    <button className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer transition-colors">
-                      <CheckCheck className="w-3.5 h-3.5" />
-                      Mark all read
+                    <button
+                      onClick={() => setNotificationsOpen(false)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
                     </button>
-                    <button className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer transition-colors">
-                      View all
-                    </button>
+                  </div>
+                  <div className="p-6 text-center text-sm text-slate-500">
+                    Notifications are not available for this account yet.
                   </div>
                 </div>
               )}
@@ -491,7 +333,6 @@ export const Dashboard: React.FC = () => {
                       highGraphics ? 'border-2 border-indigo-500 shadow-xs' : 'border border-indigo-400'
                     )}
                   />
-                  <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border-2 border-white" />
                 </div>
                 <span className="hidden sm:block text-xs font-bold text-slate-800 max-w-20 truncate leading-tight">
                   {user?.name?.split(' ')[0]}
@@ -525,7 +366,7 @@ export const Dashboard: React.FC = () => {
                           className="w-14 h-14 rounded-2xl object-cover border-2 border-indigo-500 shadow-md shadow-indigo-500/20"
                         />
                         <span className="absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 rounded-full bg-linear-to-r from-indigo-600 to-violet-600 text-white text-[9px] font-black shadow-sm">
-                          PRO
+                          {user?.badge || 'STUDENT'}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -536,15 +377,11 @@ export const Dashboard: React.FC = () => {
                         <p className="text-[11px] text-slate-500 truncate font-medium mt-0.5">{user?.email}</p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-2">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-bold">
-                            {user?.grade || 'Grade 10'}
+                            {user?.grade || '—'}
                           </span>
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
                             <Flame className="w-3 h-3 fill-amber-500" />
-                            {user?.streak || 14} Day Streak
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                            Online
+                            {user?.streak ?? 0} Day Streak
                           </span>
                         </div>
                       </div>
@@ -563,7 +400,7 @@ export const Dashboard: React.FC = () => {
                         </div>
                         <div>
                           <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block leading-none">Total XP</span>
-                          <span className="text-sm font-black text-slate-900">{(user?.points || 2850).toLocaleString()} XP</span>
+                          <span className="text-sm font-black text-slate-900">{(user?.points ?? 0).toLocaleString()} XP</span>
                         </div>
                       </div>
                       <div className="text-right">
@@ -573,9 +410,8 @@ export const Dashboard: React.FC = () => {
                             ? 'bg-linear-to-r from-indigo-500 to-violet-600 text-white shadow-xs shadow-indigo-500/30'
                             : 'bg-indigo-600 text-white'
                         )}>
-                          Level 8 Scholar
+                          {user?.badge || 'Student'}
                         </span>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Top 5% of class</p>
                       </div>
                     </div>
                   </div>
@@ -583,7 +419,7 @@ export const Dashboard: React.FC = () => {
                   {/* Menu actions */}
                   <div className="p-2 space-y-1">
                     <button
-                      onClick={() => { setActiveTab('overview'); setProfileOpen(false); }}
+                      onClick={() => { handleTabChange('overview'); setProfileOpen(false); }}
                       className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-indigo-50/80 transition-all duration-200 cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
@@ -599,7 +435,7 @@ export const Dashboard: React.FC = () => {
                     </button>
 
                     <button
-                      onClick={() => { setActiveTab('settings'); setProfileOpen(false); }}
+                      onClick={() => { handleTabChange('settings'); setProfileOpen(false); }}
                       className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50/80 transition-all duration-200 cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
@@ -615,7 +451,7 @@ export const Dashboard: React.FC = () => {
                     </button>
 
                     <button
-                      onClick={() => { setActiveTab('doubts'); setProfileOpen(false); }}
+                      onClick={() => { handleTabChange('doubts'); setProfileOpen(false); }}
                       className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-violet-50/80 transition-all duration-200 cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
@@ -656,353 +492,8 @@ export const Dashboard: React.FC = () => {
           </div>
         </header>
 
-        {/* TAB CONTENTS (Full width responsive container) */}
-        <main
-          key={activeTab}
-          className="flex-1 p-3.5 sm:p-6 lg:p-8 xl:p-10 space-y-6 sm:space-y-8 pb-24 lg:pb-8 w-full animate-fade-slide-up"
-        >
-
-          {/* OVERVIEW TAB (DEFAULT) */}
-          {activeTab === 'overview' && (
-            <>
-              {/* Greeting Hero Card */}
-              <div
-                className={cx(
-                  'p-5 sm:p-8 rounded-2xl sm:rounded-3xl text-white relative overflow-hidden transition-all w-full',
-                  highGraphics
-                    ? 'bg-linear-to-r from-indigo-600 via-indigo-700 to-violet-700 shadow-xl shadow-indigo-500/20'
-                    : 'bg-indigo-900'
-                )}
-              >
-                {highGraphics && (
-                  <div className="absolute -right-10 -bottom-10 w-48 sm:w-64 h-48 sm:h-64 bg-violet-400/20 rounded-full blur-2xl pointer-events-none"></div>
-                )}
-
-                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
-                  <div className="space-y-2">
-                    <div className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-amber-300 text-[10px] sm:text-xs font-bold">
-                      <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-amber-400 shrink-0" />
-                      <span>{user?.streak || 14} Day Daily Learning Streak!</span>
-                    </div>
-                    <h2 className="text-xl xs:text-2xl sm:text-3xl font-black leading-tight">
-                      Welcome back, {user?.name || 'Student'}! 👋
-                    </h2>
-                    <p className="text-xs sm:text-sm text-indigo-100/90 max-w-xl leading-relaxed">
-                      You are on track to complete your Chemistry goal. Resume your active lesson below or ask AI any questions.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2.5 pt-1 sm:pt-0">
-                    <button
-                      onClick={() => setActiveTab('doubts')}
-                      className={cx(
-                        'w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer active:scale-95 text-center shadow-md',
-                        highGraphics
-                          ? 'bg-white text-indigo-700 hover:bg-indigo-50'
-                          : 'bg-white text-indigo-900 hover:bg-slate-100'
-                      )}
-                    >
-                      Ask AI Doubt
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* STAT CARDS ROW */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 w-full">
-                {stats.map((stat) => {
-                  const StatIcon = stat.icon;
-                  return (
-                    <div
-                      key={stat.id}
-                      className={cx(
-                        'p-3.5 xs:p-4 sm:p-5 rounded-2xl transition-all flex flex-col justify-between',
-                        highGraphics
-                          ? 'bg-white/90 backdrop-blur-md border border-slate-100 shadow-md shadow-slate-200/50 hover:-translate-y-0.5'
-                          : 'bg-white border border-slate-200'
-                      )}
-                    >
-                      <div className="flex items-center justify-between mb-2 sm:mb-3">
-                        <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider line-clamp-1">
-                          {stat.title}
-                        </span>
-                        <div
-                          className={cx(
-                            'w-7 h-7 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0',
-                            highGraphics
-                              ? stat.color === 'indigo' ? 'bg-indigo-50 text-indigo-600'
-                              : stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600'
-                              : stat.color === 'amber' ? 'bg-amber-50 text-amber-600'
-                              : 'bg-purple-50 text-purple-600'
-                              : 'bg-slate-100 text-slate-700'
-                          )}
-                        >
-                          <StatIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xl sm:text-2xl font-black text-slate-900">{stat.value}</div>
-                        <div className="text-[10px] sm:text-[11px] font-semibold text-slate-500 mt-0.5 truncate">{stat.label}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* CONTINUE LEARNING (HORIZONTALLY SCROLLABLE CAROUSEL) */}
-              <div className="space-y-3 sm:space-y-4 w-full">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900">Continue Learning</h3>
-                  <button
-                    onClick={() => setActiveTab('courses')}
-                    className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>View All</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div
-                  className="grid gap-4 sm:gap-5 w-full"
-                  style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}
-                >
-                  {courses.map((course) => (
-                    <CourseCard
-                      key={course.id}
-                      course={course}
-                      onResume={(id) => alert(`Resuming Course: ${course.title}`)}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* GRID: TODAY'S LESSON NOTES (MARKDOWN) + LEADERBOARD WIDGET */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 w-full">
-
-                {/* Left: Markdown Lesson Panel */}
-                <div
-                  className={cx(
-                    'lg:col-span-7 p-4 sm:p-7 rounded-2xl sm:rounded-3xl transition-all overflow-hidden',
-                    highGraphics
-                      ? 'bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-xl shadow-slate-200/50'
-                      : 'bg-white border-2 border-slate-300'
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 gap-2">
-                    <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 truncate">
-                      <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 shrink-0" />
-                      <span className="truncate">Today's Lesson Notes</span>
-                    </h3>
-                    <span className="px-2 sm:px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold whitespace-nowrap">
-                      Markdown Engine
-                    </span>
-                  </div>
-
-                  <MarkdownViewer content={courseIntroMd} compact={!highGraphics} />
-                </div>
-
-                {/* Right: Leaderboard Widget */}
-                <div
-                  className={cx(
-                    'lg:col-span-5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all flex flex-col justify-between space-y-4',
-                    highGraphics
-                      ? 'bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-xl shadow-slate-200/50'
-                      : 'bg-white border-2 border-slate-300'
-                  )}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-                      <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
-                        <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500 shrink-0" />
-                        <span>Class Leaderboard</span>
-                      </h3>
-                      <span className="text-[11px] sm:text-xs font-bold text-indigo-600">Weekly Top 5</span>
-                    </div>
-
-                    <div className="space-y-2.5">
-                      {leaderboard.map((entry) => (
-                        <div
-                          key={entry.rank}
-                          className={cx(
-                            'p-2.5 sm:p-3 rounded-xl sm:rounded-2xl flex items-center justify-between transition-all gap-2',
-                            entry.rank === 2
-                              ? highGraphics
-                                ? 'bg-indigo-50/80 border border-indigo-200 shadow-xs'
-                                : 'bg-indigo-50 border border-indigo-200'
-                              : 'bg-slate-50/80 hover:bg-slate-100'
-                          )}
-                        >
-                          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                            <span className="w-5 text-center text-xs font-extrabold text-slate-700 shrink-0">
-                              #{entry.rank}
-                            </span>
-                            <img
-                              src={entry.avatar}
-                              alt={entry.name}
-                              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border border-slate-300 shrink-0"
-                            />
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-slate-900 truncate">{entry.name}</p>
-                              <span className="text-[10px] font-semibold text-slate-500 truncate block">
-                                🔥 {entry.streak}D Streak
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="text-right shrink-0">
-                            <div className="text-xs font-black text-indigo-600">
-                              {entry.points.toLocaleString()} XP
-                            </div>
-                            <span className="text-[10px] font-bold text-amber-600">{entry.badge}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-100 text-center">
-                    <p className="text-[11px] text-slate-500">Complete daily quizzes to gain +50 XP and climb!</p>
-                  </div>
-                </div>
-
-              </div>
-            </>
-          )}
-
-          {/* AI DOUBT SOLVER TAB */}
-          {activeTab === 'doubts' && (
-            <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 w-full">
-              <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-xs w-full">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
-                    <Brain className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg sm:text-xl font-bold text-slate-900">AI Instant Doubt Solver</h2>
-                    <p className="text-xs text-slate-500">Ask any question in Science, Math, or Coding.</p>
-                  </div>
-                </div>
-
-                <div className="h-[45vh] sm:h-96 overflow-y-auto p-3 sm:p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3 mb-3 sm:mb-4">
-                  {chatMessages.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className={cx(
-                        'flex',
-                        msg.sender === 'user' ? 'justify-end' : 'justify-start'
-                      )}
-                    >
-                      <div
-                        className={cx(
-                          'max-w-[85%] sm:max-w-md p-3 sm:p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed font-medium',
-                          msg.sender === 'user'
-                            ? 'bg-indigo-600 text-white rounded-br-none shadow-xs'
-                            : 'bg-white text-slate-800 border border-slate-200 shadow-xs rounded-bl-none'
-                        )}
-                      >
-                        {msg.text}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <form onSubmit={handleSendMessage} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Type your doubt (e.g. Explain Newton's Law)..."
-                    className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 min-w-0"
-                  />
-                  <button
-                    type="submit"
-                    className="px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-indigo-600 text-white text-xs font-bold flex items-center gap-1.5 hover:bg-indigo-700 cursor-pointer active:scale-95 shrink-0"
-                  >
-                    <span>Send</span>
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* MY COURSES TAB (100% Full-Width Responsive Grid) */}
-          {activeTab === 'courses' && (
-            <div className="space-y-4 sm:space-y-6 w-full">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-slate-900">All Enrolled Courses</h2>
-                  <p className="text-xs sm:text-sm text-slate-500">Pick up where you left off across your active courses.</p>
-                </div>
-              </div>
-
-              {/* Responsive Grid: 1 col on mobile (100% full width), 2 col on tablet/small laptop, 3 col on large screens */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 sm:gap-6 w-full">
-                {courses.map((course) => (
-                  <CourseCard
-                    key={course.id}
-                    course={course}
-                    onResume={(id) => alert(`Resuming Course: ${course.title}`)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* QUIZZES TAB */}
-          {activeTab === 'quizzes' && (
-            <div className="bg-white p-6 sm:p-10 rounded-2xl sm:rounded-3xl border border-slate-200 text-center space-y-4 max-w-xl mx-auto">
-              <Trophy className="w-12 h-12 text-amber-500 mx-auto" />
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Gamified Daily Quizzes</h2>
-              <p className="text-xs sm:text-sm text-slate-600">
-                Test your knowledge with 5-minute rapid quizzes to earn XP points and unlock achievements.
-              </p>
-              <button className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 cursor-pointer shadow-md active:scale-95">
-                Start Today's Quiz (+100 XP)
-              </button>
-            </div>
-          )}
-
-          {/* PROGRESS TAB */}
-          {activeTab === 'progress' && (
-            <div className="bg-white p-6 sm:p-10 rounded-2xl sm:rounded-3xl border border-slate-200 text-center space-y-4 max-w-xl mx-auto">
-              <BarChart3 className="w-12 h-12 text-indigo-600 mx-auto" />
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Learning Analytics</h2>
-              <p className="text-xs sm:text-sm text-slate-600">
-                Track your accuracy, total study time, and skill mastery over time.
-              </p>
-            </div>
-          )}
-
-          {/* SETTINGS TAB */}
-          {activeTab === 'settings' && (
-            <div className="bg-white p-5 sm:p-8 rounded-2xl sm:rounded-3xl border border-slate-200 space-y-5 sm:space-y-6 max-w-2xl mx-auto">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900">Account & Preferences</h2>
-
-              <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 bg-slate-50 rounded-2xl gap-2 sm:gap-4">
-                  <div>
-                    <h4 className="font-bold text-slate-900">Graphics Performance Mode</h4>
-                    <p className="text-slate-500 text-[11px] sm:text-xs">Toggle between ambient gradients and lightweight flat UI.</p>
-                  </div>
-                  <div className="self-start sm:self-auto">
-                    <PerformanceToggle />
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 bg-slate-50 rounded-2xl gap-2 sm:gap-4">
-                  <div>
-                    <h4 className="font-bold text-slate-900">Interface Language</h4>
-                    <p className="text-slate-500 text-[11px] sm:text-xs">Choose your preferred language.</p>
-                  </div>
-                  <div className="self-start sm:self-auto">
-                    <LanguageSelector />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 xl:p-10 pb-24 lg:pb-8 w-full animate-fade-slide-up">
+          <Outlet />
         </main>
 
       </div>

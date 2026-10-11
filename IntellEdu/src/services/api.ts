@@ -35,23 +35,44 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new Error(
+      `Cannot reach the IntellEdu API at ${API_BASE_URL}. Make sure the backend is running and VITE_API_URL is correct.`
+    );
+  }
 
   if (!response.ok) {
     let errorMessage = `HTTP Error ${response.status}`;
     try {
-      const errData = await response.json();
-      errorMessage = errData.message || (errData.errors ? JSON.stringify(errData.errors) : errorMessage);
+      const responseBody = await response.text();
+      try {
+        const errData = JSON.parse(responseBody) as { message?: string; errors?: unknown };
+        errorMessage = errData.message || (errData.errors ? JSON.stringify(errData.errors) : errorMessage);
+      } catch {
+        errorMessage = /password authentication failed|no pg_hba\.conf entry|database "[^"]+" does not exist/i.test(responseBody)
+          ? 'The backend cannot connect to PostgreSQL. Set DB_PASSWORD in the backend .env file, confirm the DB_USER and database settings, then restart the backend.'
+          : responseBody.trim() || errorMessage;
+      }
     } catch {
-      // ignore json parse error
+      // Keep the HTTP status as a fallback when the response body cannot be read.
     }
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status);
   }
 
   return response.json() as Promise<T>;
+}
+
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,6 +86,7 @@ export interface AuthResponse {
     id: number | string;
     fullName: string;
     email: string;
+    phone?: string | null;
     grade: string;
     points: number;
     streak: number;
@@ -74,20 +96,48 @@ export interface AuthResponse {
   };
 }
 
+export interface OtpChallengeResponse {
+  challengeId: string;
+  channel: 'email' | 'phone' | 'whatsapp';
+  expiresInSeconds: number;
+  expiresAt: string;
+  message: string;
+  whatsappLink?: string;
+}
+
 export const authApi = {
-  register: (data: {
-    fullName: string;
-    email: string;
+  sendOtp: (data: {
+    channel: 'email' | 'phone' | 'whatsapp';
+    flow: 'login' | 'signup';
+    recipient: string;
+    fullName?: string;
+    email?: string;
     phone?: string;
-    password: string;
-    grade: string;
-  }) => request<AuthResponse>('/auth/register', {
+    grade?: string;
+  }) => request<OtpChallengeResponse>('/auth/otp/send', {
     method: 'POST',
     body: JSON.stringify(data),
   }),
 
+  verifyOtp: (data: { challengeId: string; code: string; password?: string }) =>
+    request<AuthResponse>('/auth/otp/verify', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   login: (data: { email: string; password: string }) =>
     request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  firebase: (data: {
+    idToken: string;
+    mode: 'login' | 'signup';
+    fullName?: string;
+    grade?: string;
+  }) =>
+    request<AuthResponse>('/auth/firebase', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -98,6 +148,12 @@ export const authApi = {
 
   updateProfile: (data: { fullName?: string; grade?: string; avatarUrl?: string }) =>
     request<{ message: string; user: AuthResponse['user'] }>('/auth/me', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  updatePassword: (data: { currentPassword: string; newPassword: string }) =>
+    request<{ message: string }>('/auth/password', {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
@@ -115,14 +171,28 @@ export interface CourseData {
   grade: string;
   imageUrl?: string;
   totalLessons: number;
-  rating: number;
+  rating?: number;
   completedLessons?: number;
   progressPercent?: number;
 }
 
+export interface CourseResource {
+  id: number | string;
+  courseId: number | string;
+  title: string;
+  resourceType: 'video' | 'reading';
+  resourceUrl: string;
+  estimatedMinutes?: number | null;
+  sortOrder: number;
+}
+
 export const coursesApi = {
   getAll: (params?: { grade?: string; category?: string }) => {
-    const query = new URLSearchParams(params as Record<string, string>).toString();
+    const queryParams = new URLSearchParams();
+    Object.entries(params ?? {}).forEach(([key, value]) => {
+      if (value) queryParams.set(key, value);
+    });
+    const query = queryParams.toString();
     return request<{ data: CourseData[] }>(`/courses${query ? `?${query}` : ''}`);
   },
 
@@ -139,6 +209,28 @@ export const coursesApi = {
         body: JSON.stringify({ completedLessons }),
       }
     ),
+
+  getResources: (id: string | number) =>
+    request<{ courseId: number | string; resources: CourseResource[] }>(`/courses/${id}/resources`),
+
+  startResourceSession: (courseId: string | number, resourceId: string | number) =>
+    request<{
+      sessionId: number | string;
+      courseId: number | string;
+      resourceId: number | string;
+      startedAt: string;
+      maxSessionMinutes: number;
+    }>(`/courses/${courseId}/resources/${resourceId}/sessions`, { method: 'POST' }),
+
+  completeResourceSession: (courseId: string | number, resourceId: string | number, sessionId: string | number) =>
+    request<{
+      message: string;
+      elapsedSeconds: number;
+      awardedMinutes: number;
+      xpEarned: number;
+      currentXpBalance: number;
+      limits: { maxMinutesPerSession: number; maxMinutesPerDay: number; xpPerMinute: number };
+    }>(`/courses/${courseId}/resources/${resourceId}/sessions/${sessionId}/complete`, { method: 'POST' }),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -149,6 +241,8 @@ export interface QuizData {
   id: number | string;
   title: string;
   description?: string;
+  grade?: string;
+  subject?: string;
   xpReward: number;
   timeLimitMinutes: number;
   questions?: Array<{
@@ -158,12 +252,24 @@ export interface QuizData {
   }>;
 }
 
+export interface QuizResultHistory {
+  id: number | string;
+  score: number;
+  totalQuestions: number;
+  accuracy: number;
+  xpEarned: number;
+  timeTakenSeconds?: number | null;
+  createdAt: string;
+  quiz: { id: number | string; title: string };
+}
+
 export interface QuizSubmitResult {
   message: string;
   score: number;
   totalQuestions: number;
   accuracy: number;
   xpEarned: number;
+  currentXpBalance?: number;
   review: Array<{
     question: string;
     yourAnswer: string;
@@ -174,7 +280,14 @@ export interface QuizSubmitResult {
 }
 
 export const quizzesApi = {
-  getAll: () => request<{ quizzes: QuizData[] }>('/quizzes'),
+  getAll: (params?: { grade?: string; subject?: string }) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params ?? {}).forEach(([key, value]) => {
+      if (value) queryParams.set(key, value);
+    });
+    const query = queryParams.toString();
+    return request<{ quizzes: QuizData[] }>(`/quizzes${query ? `?${query}` : ''}`);
+  },
 
   getById: (id: string | number) => request<{ quiz: QuizData }>(`/quizzes/${id}`),
 
@@ -184,7 +297,7 @@ export const quizzesApi = {
       body: JSON.stringify({ answers, timeTakenSeconds }),
     }),
 
-  getMyResults: () => request<{ results: any[] }>('/quizzes/my-results'),
+  getMyResults: () => request<{ results: QuizResultHistory[] }>('/quizzes/my-results'),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -203,20 +316,54 @@ export interface LeaderboardItem {
 }
 
 export const leaderboardApi = {
-  getGlobal: () => request<{ leaderboard: LeaderboardItem[] }>('/leaderboard'),
+  getGlobal: () => request<{ leaderboard: LeaderboardItem[] }>('/leaderboard/worldwide'),
 
   getWeekly: () => request<{ leaderboard: LeaderboardItem[] }>('/leaderboard/weekly'),
 
   getByGrade: (grade: string) =>
     request<{ leaderboard: LeaderboardItem[] }>(`/leaderboard/class/${encodeURIComponent(grade)}`),
+
+  getFriends: () =>
+    request<{ scope: 'friends'; currentUserRank: number | null; leaderboard: LeaderboardItem[] }>('/leaderboard/friends'),
+};
+
+export interface FriendAccount {
+  id: number | string;
+  name: string;
+  grade: string;
+  points: number;
+  streak: number;
+  badge?: string | null;
+  avatarUrl?: string | null;
+}
+
+export const friendsApi = {
+  getAll: () => request<{ friends: FriendAccount[]; suggestions: FriendAccount[] }>('/friends'),
+  add: (id: number | string) =>
+    request<{ message: string }>(`/friends/${id}`, { method: 'POST' }),
+  remove: (id: number | string) =>
+    request<{ message: string }>(`/friends/${id}`, { method: 'DELETE' }),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 5. Learning Progress & Daily Streak API
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface UserProgress {
+  userId: number | string;
+  points: number;
+  streak: number;
+  badge: string;
+  coursesEnrolled: number;
+  coursesCompleted: number;
+  quizzesTaken: number;
+  averageAccuracy: number;
+  enrolledCourses: CourseData[];
+  recentQuizActivity: QuizResultHistory[];
+}
+
 export const progressApi = {
-  getMyProgress: () => request<{ progress: any }>('/progress'),
+  getMyProgress: () => request<{ progress: UserProgress }>('/progress'),
 
   getStreak: () =>
     request<{ streak: number; isActiveToday: boolean; badge?: string }>('/progress/streak'),
@@ -237,9 +384,28 @@ export interface DoubtResponse {
   answer: string;
   subject?: string;
   createdAt: string;
+  xpCost?: number;
+  xpBalance?: number;
+  currentXpBalance?: number;
+  trialActive?: boolean;
+  trialDay?: number | null;
+  trialDaysRemaining?: number;
+}
+
+export interface DoubtSolverStatus {
+  xpBalance: number;
+  currentXpBalance: number;
+  xpCostPerQuestion: number;
+  trialActive: boolean;
+  trialDay: number | null;
+  trialStartedAt: string | null;
+  trialExpiresAt: string | null;
+  trialDaysRemaining: number;
 }
 
 export const doubtSolverApi = {
+  getStatus: () => request<DoubtSolverStatus>('/doubts/status'),
+
   ask: (question: string, subject?: string) =>
     request<DoubtResponse>('/doubts/ask', {
       method: 'POST',
@@ -248,4 +414,3 @@ export const doubtSolverApi = {
 
   getHistory: () => request<{ history: DoubtResponse[] }>('/doubts/history'),
 };
-
