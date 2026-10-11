@@ -1,10 +1,10 @@
 /**
  * IntellEdu Frontend API Client Service
  * Connects the React TypeScript application to the AdonisJS Backend API
- * Base URL: http://localhost:3333/api/v1
+ * Set VITE_API_URL to the backend API root, including /api/v1.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL?.replace(/\/+$/, '');
 
 // Token helpers
 export const getAuthToken = (): string | null => {
@@ -23,6 +23,10 @@ export const removeAuthToken = (): void => {
  * Standardized typed HTTP fetch wrapper with JWT bearer token support
  */
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  if (!API_BASE_URL) {
+    throw new Error('VITE_API_URL is not configured. Set it to your backend API root, including /api/v1.');
+  }
+
   const token = getAuthToken();
 
   const headers: Record<string, string> = {
