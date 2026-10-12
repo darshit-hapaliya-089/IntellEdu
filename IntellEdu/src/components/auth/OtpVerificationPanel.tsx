@@ -10,12 +10,6 @@ interface OtpVerificationPanelProps {
   onVerify: (challengeId: string, code: string) => Promise<void>;
 }
 
-function maskRecipient(channel: 'email' | 'phone', recipient: string): string {
-  if (channel === 'phone') return `${recipient.slice(0, 4)}••••${recipient.slice(-3)}`;
-  const [name, domain] = recipient.split('@');
-  return `${name.slice(0, 2)}•••@${domain ?? ''}`;
-}
-
 export const OtpVerificationPanel: React.FC<OtpVerificationPanelProps> = ({
   channel,
   recipient,
@@ -81,7 +75,7 @@ export const OtpVerificationPanel: React.FC<OtpVerificationPanelProps> = ({
           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer active:scale-98 transition-all"
         >
           {busy && !challenge ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : channel === 'email' ? <Mail className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
-          {challenge && remainingSeconds > 0 ? `Resend in ${remainingSeconds}s` : 'Send 6-digit OTP'}
+          {busy && !challenge ? 'Sending...' : challenge && remainingSeconds > 0 ? `Resend in ${remainingSeconds}s` : 'Send 6-digit OTP'}
         </button>
         <span className="text-[10px] text-slate-500">Expires after 1 minute</span>
       </div>
@@ -89,7 +83,7 @@ export const OtpVerificationPanel: React.FC<OtpVerificationPanelProps> = ({
       {challenge && (
         <div className="space-y-2">
           <p aria-live="polite" className="text-[11px] text-emerald-700 font-medium">
-            Verification code sent to {maskRecipient(channel, recipient)}. Check your {channel === 'email' ? 'inbox' : 'messages'}.
+            {challenge.message || `Verification code sent via ${challenge.channel ?? channel}.`}
             {remainingSeconds > 0 ? ` Expires in ${remainingSeconds}s.` : ' This code has expired; request a new one.'}
           </p>
 

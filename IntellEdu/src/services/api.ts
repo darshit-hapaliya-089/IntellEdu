@@ -45,9 +45,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       ...options,
       headers,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      throw new ApiError('This request took too long. Please retry in a moment.', 408);
+    }
     throw new Error(
-      `Cannot reach the IntellEdu API at ${API_BASE_URL}. Make sure the backend is running and VITE_API_URL is correct.`
+      `Cannot reach the IntellEdu API at ${API_BASE_URL}. Make sure the backend is running and VITE_API_URL is correct.`,
+      { cause: error }
     );
   }
 
@@ -101,8 +105,9 @@ export interface AuthResponse {
 }
 
 export interface OtpChallengeResponse {
+  success: boolean;
   challengeId: string;
-  channel: 'email' | 'phone' | 'whatsapp';
+  channel: 'email' | 'phone' | 'whatsapp' | null;
   expiresInSeconds: number;
   expiresAt: string;
   message: string;
@@ -110,6 +115,16 @@ export interface OtpChallengeResponse {
 }
 
 export const authApi = {
+  health: async (): Promise<void> => {
+    if (!API_BASE_URL) return;
+    const serverBase = API_BASE_URL.replace(/\/api\/v1\/?$/i, '');
+    try {
+      await fetch(`${serverBase}/health`, { signal: AbortSignal.timeout(10000) });
+    } catch {
+      // The health ping is intentionally silent; the OTP request reports connectivity failures.
+    }
+  },
+
   sendOtp: (data: {
     channel: 'email' | 'phone' | 'whatsapp';
     flow: 'login' | 'signup';
@@ -121,6 +136,7 @@ export const authApi = {
   }) => request<OtpChallengeResponse>('/auth/otp/send', {
     method: 'POST',
     body: JSON.stringify(data),
+    signal: AbortSignal.timeout(20_000),
   }),
 
   verifyOtp: (data: { challengeId: string; code: string; password?: string }) =>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LoaderCircle, MessageSquare, ShieldCheck, ExternalLink, CheckCircle2 } from 'lucide-react';
+import { LoaderCircle, MessageSquare, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { OtpChallengeResponse } from '../../services/api';
 
 interface WhatsAppOtpPanelProps {
@@ -80,7 +80,7 @@ export const WhatsAppOtpPanel: React.FC<WhatsAppOtpPanelProps> = ({
     return (
       <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
         <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-        WhatsApp phone number verified successfully!
+        {challenge?.channel === 'email' ? 'Email verified successfully!' : 'WhatsApp phone number verified successfully!'}
       </div>
     );
   }
@@ -100,7 +100,9 @@ export const WhatsAppOtpPanel: React.FC<WhatsAppOtpPanelProps> = ({
           ) : (
             <MessageSquare className="h-3.5 w-3.5 text-emerald-600" />
           )}
-          {challenge && remainingSeconds > 0
+          {busy && !challenge
+            ? 'Sending...'
+            : challenge && remainingSeconds > 0
             ? `Resend in ${remainingSeconds}s`
             : 'Send WhatsApp OTP'}
         </button>
@@ -113,7 +115,7 @@ export const WhatsAppOtpPanel: React.FC<WhatsAppOtpPanelProps> = ({
           <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 font-medium">
             <MessageSquare className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
             <p aria-live="polite">
-              Verification code sent to <span className="font-bold">{maskPhone(recipient)}</span> on WhatsApp.
+              {challenge.message || `Verification code sent to ${maskPhone(recipient)} via ${challenge.channel ?? 'WhatsApp'}.`}
               {remainingSeconds > 0 ? ` Expires in ${remainingSeconds}s.` : ' Expired; request a new code.'}
             </p>
           </div>
@@ -157,4 +159,3 @@ export const WhatsAppOtpPanel: React.FC<WhatsAppOtpPanelProps> = ({
 };
 
 export default WhatsAppOtpPanel;
-

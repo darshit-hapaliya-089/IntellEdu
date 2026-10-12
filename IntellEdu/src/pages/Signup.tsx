@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock, Mail, User, Phone, GraduationCap, Check } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, User, GraduationCap, Check } from 'lucide-react';
+import { isValidPhoneNumber } from 'libphonenumber-js';
 import { usePerformanceMode } from '../context/PerformanceModeContext';
 import { useAuth } from '../context/useAuth';
 import { SignupFormData } from '../types';
@@ -9,8 +10,9 @@ import Footer from '../components/Footer';
 import { cx } from '../utils/cx';
 import FirebaseAuthOptions from '../components/auth/FirebaseAuthOptions';
 import OtpVerificationPanel from '../components/auth/OtpVerificationPanel';
-import FirebasePhoneOtpPanel from '../components/auth/FirebasePhoneOtpPanel';
 import WhatsAppOtpPanel from '../components/auth/WhatsAppOtpPanel';
+import PhoneNumberField from '../components/auth/PhoneNumberField';
+import { authApi } from '../services/api';
 
 type SignupErrors = Partial<Record<keyof SignupFormData, string>>;
 
@@ -34,7 +36,10 @@ export const Signup: React.FC = () => {
   const [errors, setErrors] = useState<SignupErrors>({});
   const [authError, setAuthError] = useState<string | null>(null);
   const [preferredOtpChannel, setPreferredOtpChannel] = useState<'email' | 'whatsapp' | null>(null);
-  const [phoneVerifiedIdToken, setPhoneVerifiedIdToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    void authApi.health();
+  }, []);
 
   const selectedChannel: 'whatsapp' | 'email' = preferredOtpChannel && (
     preferredOtpChannel === 'whatsapp' ? formData.phone.trim() : formData.email.trim()
@@ -45,8 +50,8 @@ export const Signup: React.FC = () => {
   const validate = (): boolean => {
     const newErrors: SignupErrors = {};
     if (formData.fullName.trim().length < 2) newErrors.fullName = 'Enter your full name.';
-    if (formData.phone.trim() && !/^\+[1-9]\d{7,14}$/.test(formData.phone.trim())) {
-      newErrors.phone = 'Use international format, for example +919876543210.';
+    if (formData.phone.trim() && !isValidPhoneNumber(formData.phone.trim())) {
+      newErrors.phone = 'Enter a valid local phone number for the selected country.';
     } else if (selectedChannel === 'whatsapp' && !formData.phone.trim()) {
       newErrors.phone = 'Enter a phone number to receive the WhatsApp OTP.';
     }
@@ -84,38 +89,6 @@ export const Signup: React.FC = () => {
     try {
       await verifyOtp({ challengeId, code, password: formData.password });
       navigate('/dashboard');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Called by FirebasePhoneOtpPanel when Firebase phone verification succeeds
-  const handleFirebasePhoneVerified = async (idToken: string) => {
-    setPhoneVerifiedIdToken(idToken);
-    setAuthError(null);
-    // Validate rest of signup form before creating account
-    const signupErrors: SignupErrors = {};
-    if (formData.fullName.trim().length < 2) signupErrors.fullName = 'Enter your full name.';
-    if (!formData.password) signupErrors.password = 'Password is required.';
-    else if (formData.password.length < 6) signupErrors.password = 'Password must be at least 6 characters.';
-    if (formData.password !== formData.confirmPassword) signupErrors.confirmPassword = 'Passwords do not match.';
-    if (!formData.acceptedTerms) signupErrors.acceptedTerms = 'You must accept the terms.';
-
-    if (Object.keys(signupErrors).length) {
-      setErrors((current) => ({ ...current, ...signupErrors }));
-      throw new Error('Fix the highlighted fields to complete phone sign-up.');
-    }
-
-    setIsSubmitting(true);
-    try {
-      await authenticateFirebase(idToken, 'signup', {
-        fullName: formData.fullName.trim(),
-        grade: formData.grade,
-      });
-      navigate('/dashboard');
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Account creation failed after phone verification.');
-      throw err;
     } finally {
       setIsSubmitting(false);
     }
@@ -242,19 +215,11 @@ export const Signup: React.FC = () => {
                   <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                     Phone Number
                   </label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 shrink-0" />
-                    <input
-                      type="tel"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="e.g. +919876543210"
-                      className={cx(
-                        'w-full pl-9 pr-3 py-2 rounded-xl text-xs sm:text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500',
-                        errors.phone ? 'border-2 border-rose-500 bg-rose-50/30' : 'border border-slate-300 bg-slate-50/50'
-                      )}
-                    />
-                  </div>
+                  <PhoneNumberField
+                    value={formData.phone}
+                    onChange={(phone) => setFormData((current) => ({ ...current, phone }))}
+                    invalid={Boolean(errors.phone)}
+                  />
                   {!!formData.phone.trim() && selectedChannel === 'whatsapp' && (
                     <WhatsAppOtpPanel
                       key={`signup-whatsapp-${formData.phone.trim()}`}

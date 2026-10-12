@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, Mail, ArrowRight, Check } from 'lucide-react';
 import { usePerformanceMode } from '../context/PerformanceModeContext';
 import { useAuth } from '../context/useAuth';
 import { LoginFormData } from '../types';
+import { isValidPhoneNumber } from 'libphonenumber-js';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { cx } from '../utils/cx';
 import FirebaseAuthOptions from '../components/auth/FirebaseAuthOptions';
 import OtpVerificationPanel from '../components/auth/OtpVerificationPanel';
-import FirebasePhoneOtpPanel from '../components/auth/FirebasePhoneOtpPanel';
 import WhatsAppOtpPanel from '../components/auth/WhatsAppOtpPanel';
+import PhoneNumberField from '../components/auth/PhoneNumberField';
+import { authApi } from '../services/api';
 
 type FormErrors = Partial<Record<keyof LoginFormData, string>>;
 
@@ -29,27 +31,42 @@ export const Login: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [authError, setAuthError] = useState<string | null>(null);
+  const [loginByPhone, setLoginByPhone] = useState(false);
+  const [phone, setPhone] = useState('');
+
+  useEffect(() => {
+    void authApi.health();
+  }, []);
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {};
-    if (!formData.emailOrPhone.trim()) {
-      newErrors.emailOrPhone = 'Email or phone number is required.';
-    } else if (!formData.emailOrPhone.includes('@')) {
-      newErrors.emailOrPhone = 'Password sign-in uses email. For phone sign-in, use the SMS OTP below.';
-    }
-    if (!formData.password) {
-      newErrors.password = 'Password is required.';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters.';
+    if (loginByPhone) {
+      if (!phone.trim() || !isValidPhoneNumber(phone.trim())) {
+        newErrors.emailOrPhone = 'Enter a valid local phone number for the selected country.';
+      }
+    } else {
+      if (!formData.emailOrPhone.trim()) {
+        newErrors.emailOrPhone = 'Email address is required.';
+      } else if (!formData.emailOrPhone.includes('@')) {
+        newErrors.emailOrPhone = 'Enter a valid email address.';
+      }
+      if (!formData.password) {
+        newErrors.password = 'Password is required.';
+      } else if (formData.password.length < 6) {
+        newErrors.password = 'Password must be at least 6 characters.';
+      }
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const requestLoginOtp = (channelOverride?: 'whatsapp' | 'email') => {
-    const recipient = formData.emailOrPhone.trim();
-    if (!recipient) throw new Error('Enter the email address or phone number for your account.');
-    const channel = channelOverride || (recipient.includes('@') ? 'email' : 'whatsapp');
+    const recipient = loginByPhone ? phone.trim() : formData.emailOrPhone.trim();
+    if (!recipient) throw new Error(loginByPhone ? 'Enter your phone number.' : 'Enter your email address.');
+    if (loginByPhone && !isValidPhoneNumber(recipient)) {
+      throw new Error('Enter a valid local phone number for the selected country.');
+    }
+    const channel = channelOverride || (loginByPhone ? 'whatsapp' : 'email');
     return sendOtp({
       channel,
       flow: 'login',
@@ -64,6 +81,7 @@ export const Login: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loginByPhone) return;
     if (!validate()) return;
 
     setIsSubmitting(true);
@@ -160,32 +178,67 @@ export const Login: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-4">
-              {/* Email / Phone Field */}
               <div>
-                <label className="block text-[11px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Email or phone number
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 shrink-0" />
-                  <input
-                    type="text"
-                    autoComplete="username"
-                    value={formData.emailOrPhone}
-                    onChange={(e) => setFormData({ ...formData, emailOrPhone: e.target.value })}
-                    placeholder="Email or phone in international format (+919876543210)"
-                    className={cx(
-                      'w-full pl-10 pr-4 py-2.5 rounded-xl text-xs sm:text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500',
-                      errors.emailOrPhone
-                        ? 'border-2 border-rose-500 bg-rose-50/30'
-                        : 'border border-slate-300 bg-slate-50/50 focus:bg-white'
-                    )}
-                  />
+                <div className="mb-2 flex gap-2" role="tablist" aria-label="Sign-in method">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={!loginByPhone}
+                    onClick={() => { setLoginByPhone(false); setErrors({}); }}
+                    className={`rounded-lg px-3 py-2 text-xs font-bold ${!loginByPhone ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}
+                  >
+                    Email
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={loginByPhone}
+                    onClick={() => { setLoginByPhone(true); setErrors({}); }}
+                    className={`rounded-lg px-3 py-2 text-xs font-bold ${loginByPhone ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}
+                  >
+                    Phone
+                  </button>
                 </div>
+                <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-700 sm:text-xs">
+                  {loginByPhone ? 'Phone number' : 'Email address'}
+                </label>
+                {loginByPhone ? (
+                  <PhoneNumberField
+                    value={phone}
+                    onChange={setPhone}
+                    invalid={Boolean(errors.emailOrPhone)}
+                  />
+                ) : (
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 shrink-0 text-slate-400" />
+                    <input
+                      type="email"
+                      autoComplete="username"
+                      value={formData.emailOrPhone}
+                      onChange={(event) => setFormData({ ...formData, emailOrPhone: event.target.value })}
+                      placeholder="you@example.com"
+                      className={cx(
+                        'w-full rounded-xl py-2.5 pl-10 pr-4 text-xs transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:text-sm',
+                        errors.emailOrPhone
+                          ? 'border-2 border-rose-500 bg-rose-50/30'
+                          : 'border border-slate-300 bg-slate-50/50 focus:bg-white'
+                      )}
+                    />
+                  </div>
+                )}
                 {errors.emailOrPhone && (
                   <p className="text-[11px] font-semibold text-rose-500 mt-1">{errors.emailOrPhone}</p>
                 )}
-                {formData.emailOrPhone.trim() && (
-                  formData.emailOrPhone.includes('@') ? (
+                {loginByPhone && phone.trim() && (
+                  <WhatsAppOtpPanel
+                    key={`login-whatsapp-${phone.trim()}`}
+                    recipient={phone.trim()}
+                    disabled={isSubmitting}
+                    onSend={() => requestLoginOtp('whatsapp')}
+                    onVerify={verifyLoginOtp}
+                  />
+                )}
+                {!loginByPhone && formData.emailOrPhone.trim() && (
                     <OtpVerificationPanel
                       key={`login-email-${formData.emailOrPhone.trim()}`}
                       channel="email"
@@ -193,20 +246,11 @@ export const Login: React.FC = () => {
                       onSend={() => requestLoginOtp('email')}
                       onVerify={verifyLoginOtp}
                     />
-                  ) : (
-                    <WhatsAppOtpPanel
-                      key={`login-whatsapp-${formData.emailOrPhone.trim()}`}
-                      recipient={formData.emailOrPhone.trim()}
-                      disabled={isSubmitting}
-                      onSend={() => requestLoginOtp('whatsapp')}
-                      onVerify={verifyLoginOtp}
-                    />
-                  )
                 )}
               </div>
 
               {/* Password Field */}
-              <div>
+              {!loginByPhone && <div>
                 <label className="block text-[11px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                   Password
                 </label>
@@ -236,10 +280,10 @@ export const Login: React.FC = () => {
                 {errors.password && (
                   <p className="text-[11px] font-semibold text-rose-500 mt-1">{errors.password}</p>
                 )}
-              </div>
+              </div>}
 
               {/* Remember Me & Forgot Password */}
-              <div className="flex items-center justify-between text-xs pt-1">
+              {!loginByPhone && <div className="flex items-center justify-between text-xs pt-1">
                 <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
                   <input
                     type="checkbox"
@@ -252,10 +296,10 @@ export const Login: React.FC = () => {
                 <a href="#forgot" className="font-semibold text-indigo-600 hover:underline">
                   Forgot Password?
                 </a>
-              </div>
+              </div>}
 
               {/* Submit Button */}
-              <button
+              {!loginByPhone && <button
                 type="submit"
                 disabled={isSubmitting}
                 className={cx(
@@ -273,7 +317,7 @@ export const Login: React.FC = () => {
                     <ArrowRight className="w-4 h-4 shrink-0" />
                   </>
                 )}
-              </button>
+              </button>}
             </form>
 
             {authError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-600">{authError}</p>}
