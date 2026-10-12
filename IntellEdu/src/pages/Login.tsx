@@ -14,7 +14,6 @@ import OtpVerificationPanel from '../components/auth/OtpVerificationPanel';
 import WhatsAppOtpPanel from '../components/auth/WhatsAppOtpPanel';
 import PhoneNumberField from '../components/auth/PhoneNumberField';
 import { authApi } from '../services/api';
-import { firebaseAuthConfigured } from '../services/firebase';
 
 type FormErrors = Partial<Record<keyof LoginFormData, string>>;
 const whatsappOptionEnabled = import.meta.env.VITE_ENABLE_WHATSAPP_OPTION === 'true';
@@ -36,18 +35,10 @@ export const Login: React.FC = () => {
   const [authError, setAuthError] = useState<string | null>(null);
   const [loginByPhone, setLoginByPhone] = useState(false);
   const [phone, setPhone] = useState('');
-  const [smsAvailable, setSmsAvailable] = useState(false);
   const [phoneOtpChannel, setPhoneOtpChannel] = useState<'sms' | 'whatsapp'>('sms');
 
   useEffect(() => {
-    void authApi.health()
-      .then(() => authApi.channels())
-      .then(({ sms }) => {
-        const available = sms && firebaseAuthConfigured;
-        setSmsAvailable(available);
-        if (!available && whatsappOptionEnabled) setPhoneOtpChannel('whatsapp');
-      })
-      .catch(() => setSmsAvailable(false));
+    void authApi.health();
   }, []);
 
   const validate = (): boolean => {
@@ -212,7 +203,7 @@ export const Login: React.FC = () => {
                   >
                     Email
                   </button>
-                  {(smsAvailable || whatsappOptionEnabled) && <button
+                  <button
                     type="button"
                     role="tab"
                     aria-selected={loginByPhone}
@@ -220,7 +211,7 @@ export const Login: React.FC = () => {
                     className={`rounded-lg px-3 py-2 text-xs font-bold ${loginByPhone ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}
                   >
                     Phone (SMS)
-                  </button>}
+                  </button>
                 </div>
                 <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-700 sm:text-xs">
                   {loginByPhone ? 'Phone number' : 'Email address'}
@@ -257,7 +248,7 @@ export const Login: React.FC = () => {
                 )}
                 {loginByPhone && phone.trim() && whatsappOptionEnabled && (
                   <fieldset className="mt-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
-                    {smsAvailable && <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-indigo-700">
+                    <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-indigo-700">
                       <input
                         type="radio"
                         name="login-phone-channel"
@@ -265,8 +256,8 @@ export const Login: React.FC = () => {
                         onChange={() => setPhoneOtpChannel('sms')}
                         className="accent-indigo-600"
                       />
-                      Phone (SMS) OTP
-                    </label>}
+                      Verify with Phone (SMS)
+                    </label>
                     <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-emerald-700">
                       <input
                         type="radio"
@@ -279,7 +270,7 @@ export const Login: React.FC = () => {
                     </label>
                   </fieldset>
                 )}
-                {loginByPhone && phone.trim() && phoneOtpChannel === 'sms' && smsAvailable && (
+                {loginByPhone && phone.trim() && phoneOtpChannel === 'sms' && (
                   <FirebasePhoneOtpPanel
                     key={`login-sms-${phone.trim()}`}
                     phoneNumber={phone.trim()}

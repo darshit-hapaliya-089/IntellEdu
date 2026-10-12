@@ -40,26 +40,21 @@ export const Signup: React.FC = () => {
   const [errors, setErrors] = useState<SignupErrors>({});
   const [authError, setAuthError] = useState<string | null>(null);
   const [preferredOtpChannel, setPreferredOtpChannel] = useState<SignupOtpChannel | null>(null);
-  const [smsAvailable, setSmsAvailable] = useState(false);
+  const [phoneVerified, setPhoneVerified] = useState(false);
 
   useEffect(() => {
-    void authApi.health()
-      .then(() => authApi.channels())
-      .then(({ sms }) => setSmsAvailable(sms && firebaseAuthConfigured))
-      .catch(() => setSmsAvailable(false));
+    void authApi.health();
   }, []);
 
   const selectedChannel: SignupOtpChannel = preferredOtpChannel && (
     (preferredOtpChannel === 'email' && formData.email.trim()) ||
-    (preferredOtpChannel === 'sms' && formData.phone.trim() && smsAvailable) ||
+    (preferredOtpChannel === 'sms' && formData.phone.trim()) ||
     (preferredOtpChannel === 'whatsapp' && formData.phone.trim() && whatsappOptionEnabled)
   )
     ? preferredOtpChannel
-    : formData.phone.trim() && smsAvailable
+    : formData.phone.trim()
       ? 'sms'
-      : formData.phone.trim() && whatsappOptionEnabled
-        ? 'whatsapp'
-        : 'email';
+      : 'email';
 
   const validate = (): boolean => {
     const newErrors: SignupErrors = {};
@@ -141,7 +136,7 @@ export const Signup: React.FC = () => {
         email: formData.email.trim() ? formData.email.trim().toLowerCase() : undefined,
         password: formData.password,
       });
-      navigate('/dashboard');
+      setPhoneVerified(true);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Phone verification signup failed.');
       throw err;
@@ -247,22 +242,24 @@ export const Signup: React.FC = () => {
                   </label>
                   <PhoneNumberField
                     value={formData.phone}
-                    onChange={(phone) => setFormData((current) => ({ ...current, phone }))}
+                    onChange={(phone) => {
+                      setPhoneVerified(false);
+                      setFormData((current) => ({ ...current, phone }));
+                    }}
                     invalid={Boolean(errors.phone)}
                   />
-                  {!!formData.phone.trim() && selectedChannel === 'sms' && smsAvailable && (
+                  {phoneVerified && (
+                    <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                      <Check className="h-3.5 w-3.5" />
+                      Phone number verified
+                    </p>
+                  )}
+                  {!!formData.phone.trim() && selectedChannel === 'sms' && (
                     <FirebasePhoneOtpPanel
                       key={`signup-sms-${formData.phone.trim()}`}
                       phoneNumber={formData.phone.trim()}
-                      disabled={
-                        isSubmitting ||
-                        !formData.acceptedTerms ||
-                        !isValidPhoneNumber(formData.phone.trim()) ||
-                        formData.fullName.trim().length < 2 ||
-                        formData.password.length < 6 ||
-                        formData.password !== formData.confirmPassword ||
-                        (!!formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim()))
-                      }
+                      disabled={isSubmitting || !isValidPhoneNumber(formData.phone.trim())}
+                      onBeforeSend={validate}
                       onVerified={handlePhoneFirebaseAuth}
                     />
                   )}
@@ -336,13 +333,13 @@ export const Signup: React.FC = () => {
                 </div>
               </div>
 
-              {formData.phone.trim() && (smsAvailable || whatsappOptionEnabled || formData.email.trim()) && (
+              {formData.phone.trim() && (
                 <fieldset className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                   <legend className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                    Choose where to receive your OTP
+                    Choose your verification method
                   </legend>
                   <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-700">
-                    {smsAvailable && <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-indigo-700">
+                    <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-indigo-700">
                       <input
                         type="radio"
                         name="signup-otp-channel"
@@ -351,8 +348,8 @@ export const Signup: React.FC = () => {
                         onChange={() => setPreferredOtpChannel('sms')}
                         className="accent-indigo-600"
                       />
-                      Phone (SMS) OTP
-                    </label>}
+                      Verify with Phone (SMS)
+                    </label>
                     {whatsappOptionEnabled && <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-emerald-700">
                       <input
                         type="radio"
@@ -373,11 +370,17 @@ export const Signup: React.FC = () => {
                         onChange={() => setPreferredOtpChannel('email')}
                         className="accent-indigo-600"
                       />
-                      Email address
+                      Verify with Email
                     </label>}
                   </div>
                   <p className="mt-1 text-[10px] text-slate-500">
-                    Only the contact you verify will be marked as verified.
+                    {selectedChannel === 'sms'
+                      ? firebaseAuthConfigured
+                        ? 'A code will be sent by Firebase SMS. Your phone is verified only after the code is confirmed.'
+                        : 'Phone (SMS) verification is selected. Firebase configuration is required to send a code.'
+                      : selectedChannel === 'email'
+                        ? 'A code will be sent to your email. Your email is verified only after the code is confirmed.'
+                        : 'Your phone is verified only after the WhatsApp code is confirmed.'}
                   </p>
                 </fieldset>
               )}
@@ -449,12 +452,21 @@ export const Signup: React.FC = () => {
 
               <p className="text-center text-[11px] text-slate-500">
                 {selectedChannel === 'sms'
-                  ? 'Phone (SMS) verification is selected. Any email entered is saved.'
+                  ? 'Verify with Phone (SMS) is selected. Any email entered is saved but will not be verified.'
                   : selectedChannel === 'whatsapp'
                     ? 'WhatsApp verification is selected. Any email entered is saved.'
-                    : 'The email address is selected for verification. Any phone number entered is saved.'}
+                    : 'Verify with Email is selected. Any phone number entered is saved but will not be verified.'}
                 {selectedChannel !== 'sms' && selectedChannel !== 'whatsapp' && ' The 6-digit email OTP expires in 60 seconds.'}
               </p>
+              {phoneVerified && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/dashboard')}
+                  className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-extrabold text-white shadow-md transition-colors hover:bg-indigo-700"
+                >
+                  Continue to IntellEdu
+                </button>
+              )}
             </form>
 
             {authError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-600">{authError}</p>}

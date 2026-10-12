@@ -19,6 +19,7 @@ import { firebaseAuthConfigured, getFirebaseAuth } from '../../services/firebase
 interface FirebasePhoneOtpPanelProps {
   phoneNumber: string;    // must be in E.164 format e.g. "+919876543210"
   disabled?: boolean;
+  onBeforeSend?: () => boolean | Promise<boolean>;
   onVerified: (idToken: string) => Promise<void>;
 }
 
@@ -64,6 +65,7 @@ function getFirebaseErrorMessage(error: unknown): string {
 export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
   phoneNumber,
   disabled = false,
+  onBeforeSend,
   onVerified,
 }) => {
   const [panelState, setPanelState] = useState<PanelState>({ step: 'idle' });
@@ -120,6 +122,7 @@ export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
       setError('Firebase is not configured. Contact the administrator.');
       return;
     }
+    if (onBeforeSend && !(await onBeforeSend())) return;
 
     setPanelState({ step: 'sending' });
     setError(null);
