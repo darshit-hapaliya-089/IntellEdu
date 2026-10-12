@@ -115,6 +115,8 @@ export interface OtpChallengeResponse {
 }
 
 export const authApi = {
+  channels: () => request<{ email: boolean; sms: boolean }>('/auth/channels'),
+
   health: async (): Promise<void> => {
     if (!API_BASE_URL) return;
     const serverBase = API_BASE_URL.replace(/\/api\/v1\/?$/i, '');
@@ -160,6 +162,20 @@ export const authApi = {
     request<AuthResponse>('/auth/firebase', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  phoneFirebaseVerify: (data: {
+    idToken: string;
+    mode: 'login' | 'signup';
+    fullName?: string;
+    grade?: string;
+    email?: string;
+    password?: string;
+  }) =>
+    request<AuthResponse>('/auth/phone/firebase-verify', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      signal: AbortSignal.timeout(20_000),
     }),
 
   logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),

@@ -9,16 +9,20 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { cx } from '../utils/cx';
 import FirebaseAuthOptions from '../components/auth/FirebaseAuthOptions';
+import FirebasePhoneOtpPanel from '../components/auth/FirebasePhoneOtpPanel';
 import OtpVerificationPanel from '../components/auth/OtpVerificationPanel';
 import WhatsAppOtpPanel from '../components/auth/WhatsAppOtpPanel';
 import PhoneNumberField from '../components/auth/PhoneNumberField';
 import { authApi } from '../services/api';
+import { firebaseAuthConfigured } from '../services/firebase';
 
 type SignupErrors = Partial<Record<keyof SignupFormData, string>>;
+type SignupOtpChannel = 'email' | 'sms' | 'whatsapp';
+const whatsappOptionEnabled = import.meta.env.VITE_ENABLE_WHATSAPP_OPTION === 'true';
 
 export const Signup: React.FC = () => {
   const { highGraphics } = usePerformanceMode();
-  const { sendOtp, verifyOtp, authenticateFirebase } = useAuth();
+  const { sendOtp, verifyOtp, authenticateFirebase, authenticatePhoneFirebase } = useAuth();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState<SignupFormData>({
@@ -35,25 +39,35 @@ export const Signup: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errors, setErrors] = useState<SignupErrors>({});
   const [authError, setAuthError] = useState<string | null>(null);
-  const [preferredOtpChannel, setPreferredOtpChannel] = useState<'email' | 'whatsapp' | null>(null);
+  const [preferredOtpChannel, setPreferredOtpChannel] = useState<SignupOtpChannel | null>(null);
+  const [smsAvailable, setSmsAvailable] = useState(false);
 
   useEffect(() => {
-    void authApi.health();
+    void authApi.health()
+      .then(() => authApi.channels())
+      .then(({ sms }) => setSmsAvailable(sms && firebaseAuthConfigured))
+      .catch(() => setSmsAvailable(false));
   }, []);
 
-  const selectedChannel: 'whatsapp' | 'email' = preferredOtpChannel && (
-    preferredOtpChannel === 'whatsapp' ? formData.phone.trim() : formData.email.trim()
+  const selectedChannel: SignupOtpChannel = preferredOtpChannel && (
+    (preferredOtpChannel === 'email' && formData.email.trim()) ||
+    (preferredOtpChannel === 'sms' && formData.phone.trim() && smsAvailable) ||
+    (preferredOtpChannel === 'whatsapp' && formData.phone.trim() && whatsappOptionEnabled)
   )
     ? preferredOtpChannel
-    : formData.phone.trim() ? 'whatsapp' : 'email';
+    : formData.phone.trim() && smsAvailable
+      ? 'sms'
+      : formData.phone.trim() && whatsappOptionEnabled
+        ? 'whatsapp'
+        : 'email';
 
   const validate = (): boolean => {
     const newErrors: SignupErrors = {};
     if (formData.fullName.trim().length < 2) newErrors.fullName = 'Enter your full name.';
     if (formData.phone.trim() && !isValidPhoneNumber(formData.phone.trim())) {
       newErrors.phone = 'Enter a valid local phone number for the selected country.';
-    } else if (selectedChannel === 'whatsapp' && !formData.phone.trim()) {
-      newErrors.phone = 'Enter a phone number to receive the WhatsApp OTP.';
+    } else if (selectedChannel !== 'email' && !formData.phone.trim()) {
+      newErrors.phone = 'Enter a phone number to receive the SMS verification code.';
     }
     if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       newErrors.email = 'Enter a valid email address.';
@@ -71,7 +85,7 @@ export const Signup: React.FC = () => {
 
   const requestSignupOtp = async (channelOverride?: 'whatsapp' | 'email') => {
     if (!validate()) throw new Error('Please fix the highlighted signup details first.');
-    const channel = channelOverride || selectedChannel;
+    const channel = channelOverride || (selectedChannel === 'sms' ? 'email' : selectedChannel);
     const recipient = channel === 'whatsapp' ? formData.phone.trim() : formData.email.trim().toLowerCase();
     return sendOtp({
       channel,
@@ -114,6 +128,22 @@ export const Signup: React.FC = () => {
       navigate('/dashboard');
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Verified signup failed.');
+      throw err;
+    }
+  };
+
+  const handlePhoneFirebaseAuth = async (idToken: string) => {
+    setAuthError(null);
+    try {
+      await authenticatePhoneFirebase(idToken, 'signup', {
+        fullName: formData.fullName.trim(),
+        grade: formData.grade,
+        email: formData.email.trim() ? formData.email.trim().toLowerCase() : undefined,
+        password: formData.password,
+      });
+      navigate('/dashboard');
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Phone verification signup failed.');
       throw err;
     }
   };
@@ -220,7 +250,23 @@ export const Signup: React.FC = () => {
                     onChange={(phone) => setFormData((current) => ({ ...current, phone }))}
                     invalid={Boolean(errors.phone)}
                   />
-                  {!!formData.phone.trim() && selectedChannel === 'whatsapp' && (
+                  {!!formData.phone.trim() && selectedChannel === 'sms' && smsAvailable && (
+                    <FirebasePhoneOtpPanel
+                      key={`signup-sms-${formData.phone.trim()}`}
+                      phoneNumber={formData.phone.trim()}
+                      disabled={
+                        isSubmitting ||
+                        !formData.acceptedTerms ||
+                        !isValidPhoneNumber(formData.phone.trim()) ||
+                        formData.fullName.trim().length < 2 ||
+                        formData.password.length < 6 ||
+                        formData.password !== formData.confirmPassword ||
+                        (!!formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim()))
+                      }
+                      onVerified={handlePhoneFirebaseAuth}
+                    />
+                  )}
+                  {!!formData.phone.trim() && selectedChannel === 'whatsapp' && whatsappOptionEnabled && (
                     <WhatsAppOtpPanel
                       key={`signup-whatsapp-${formData.phone.trim()}`}
                       recipient={formData.phone.trim()}
@@ -228,6 +274,9 @@ export const Signup: React.FC = () => {
                       onSend={() => requestSignupOtp('whatsapp')}
                       onVerify={verifySignupOtp}
                     />
+                  )}
+                  {formData.phone.trim() && !isValidPhoneNumber(formData.phone.trim()) && (
+                    <p className="text-[10px] text-rose-500 mt-0.5">Enter a valid phone number for the selected country.</p>
                   )}
                   {errors.phone && <p className="text-[10px] text-rose-500 mt-0.5">{errors.phone}</p>}
                 </div>
@@ -287,13 +336,24 @@ export const Signup: React.FC = () => {
                 </div>
               </div>
 
-              {formData.phone.trim() && formData.email.trim() && (
+              {formData.phone.trim() && (smsAvailable || whatsappOptionEnabled || formData.email.trim()) && (
                 <fieldset className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                   <legend className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
                     Choose where to receive your OTP
                   </legend>
                   <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-700">
-                    <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-emerald-700">
+                    {smsAvailable && <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-indigo-700">
+                      <input
+                        type="radio"
+                        name="signup-otp-channel"
+                        value="sms"
+                        checked={selectedChannel === 'sms'}
+                        onChange={() => setPreferredOtpChannel('sms')}
+                        className="accent-indigo-600"
+                      />
+                      Phone (SMS) OTP
+                    </label>}
+                    {whatsappOptionEnabled && <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-emerald-700">
                       <input
                         type="radio"
                         name="signup-otp-channel"
@@ -302,9 +362,9 @@ export const Signup: React.FC = () => {
                         onChange={() => setPreferredOtpChannel('whatsapp')}
                         className="accent-emerald-600"
                       />
-                      WhatsApp OTP (Free)
-                    </label>
-                    <label className="inline-flex cursor-pointer items-center gap-2">
+                      WhatsApp OTP
+                    </label>}
+                    {formData.email.trim() && <label className="inline-flex cursor-pointer items-center gap-2">
                       <input
                         type="radio"
                         name="signup-otp-channel"
@@ -314,7 +374,7 @@ export const Signup: React.FC = () => {
                         className="accent-indigo-600"
                       />
                       Email address
-                    </label>
+                    </label>}
                   </div>
                   <p className="mt-1 text-[10px] text-slate-500">
                     Only the contact you verify will be marked as verified.
@@ -388,10 +448,12 @@ export const Signup: React.FC = () => {
               </div>
 
               <p className="text-center text-[11px] text-slate-500">
-                {selectedChannel === 'whatsapp'
-                  ? 'WhatsApp is selected for verification. Any email entered is saved.'
-                  : 'The email address is selected for verification. Any phone number entered is saved.'}
-                {' '}The 6-digit OTP expires in 60 seconds.
+                {selectedChannel === 'sms'
+                  ? 'Phone (SMS) verification is selected. Any email entered is saved.'
+                  : selectedChannel === 'whatsapp'
+                    ? 'WhatsApp verification is selected. Any email entered is saved.'
+                    : 'The email address is selected for verification. Any phone number entered is saved.'}
+                {selectedChannel !== 'sms' && selectedChannel !== 'whatsapp' && ' The 6-digit email OTP expires in 60 seconds.'}
               </p>
             </form>
 

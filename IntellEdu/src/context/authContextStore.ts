@@ -14,6 +14,11 @@ export interface AuthContextValue {
     mode: 'login' | 'signup',
     profile?: { fullName?: string; grade?: string }
   ) => Promise<void>;
+  authenticatePhoneFirebase: (
+    idToken: string,
+    mode: 'login' | 'signup',
+    profile?: { fullName?: string; grade?: string; email?: string; password?: string }
+  ) => Promise<void>;
   logout: () => void;
   updateUser: (updatedData: Partial<AuthUser>) => void;
 }

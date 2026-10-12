@@ -1,7 +1,7 @@
 /**
  * FirebasePhoneOtpPanel
  * ---------------------
- * Sends a real SMS OTP via Firebase Phone Authentication (10,000 SMS/month free).
+ * Sends an SMS OTP via Firebase Phone Authentication.
  * Uses invisible reCAPTCHA — the user never sees a CAPTCHA challenge.
  *
  * Usage:
@@ -25,9 +25,41 @@ interface FirebasePhoneOtpPanelProps {
 type PanelState =
   | { step: 'idle' }
   | { step: 'sending' }
-  | { step: 'awaiting_code'; confirmationResult: import('@firebase/auth').ConfirmationResult }
-  | { step: 'verifying'; confirmationResult: import('@firebase/auth').ConfirmationResult }
+  | { step: 'awaiting_code'; confirmationResult: import('firebase/auth').ConfirmationResult }
+  | { step: 'verifying'; confirmationResult: import('firebase/auth').ConfirmationResult }
   | { step: 'done' };
+
+function getFirebaseErrorCode(error: unknown): string | null {
+  if (typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string') {
+    return error.code;
+  }
+  return null;
+}
+
+function getFirebaseErrorMessage(error: unknown): string {
+  switch (getFirebaseErrorCode(error)) {
+    case 'auth/invalid-phone-number':
+      return 'Enter a valid phone number with the selected country code.';
+    case 'auth/too-many-requests':
+      return 'Too many SMS attempts. Please wait a while before trying again.';
+    case 'auth/invalid-verification-code':
+      return 'That verification code is incorrect. Check the SMS and try again.';
+    case 'auth/code-expired':
+    case 'auth/session-expired':
+      return 'This verification code has expired. Request a new SMS code.';
+    case 'auth/quota-exceeded':
+      return 'Firebase SMS quota is exhausted. Try again later or use Email OTP.';
+    case 'auth/captcha-check-failed':
+    case 'auth/missing-recaptcha-token':
+      return 'The security check failed. Please retry sending the SMS code.';
+    case 'auth/unauthorized-domain':
+      return 'This website domain is not authorized for Firebase Phone Authentication.';
+    case 'auth/network-request-failed':
+      return 'Network connection failed. Check your internet connection and retry.';
+    default:
+      return 'Phone verification could not be completed. Please retry or use Email OTP.';
+  }
+}
 
 export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
   phoneNumber,
@@ -39,7 +71,7 @@ export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(0);
   const recaptchaContainerRef = useRef<HTMLDivElement>(null);
-  const recaptchaVerifierRef = useRef<import('@firebase/auth').RecaptchaVerifier | null>(null);
+  const recaptchaVerifierRef = useRef<import('firebase/auth').RecaptchaVerifier | null>(null);
 
   // Countdown timer for resend throttle
   useEffect(() => {
@@ -64,23 +96,21 @@ export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
     // Reuse existing verifier if still valid
     if (recaptchaVerifierRef.current) return recaptchaVerifierRef.current;
 
-    const { RecaptchaVerifier } = await import('@firebase/auth');
+    const { RecaptchaVerifier } = await import('firebase/auth');
     const auth = await getFirebaseAuth();
 
     if (!recaptchaContainerRef.current) throw new Error('reCAPTCHA container not found.');
 
     const verifier = new RecaptchaVerifier(auth, recaptchaContainerRef.current, {
       size: 'invisible',
-      callback: () => { /* reCAPTCHA solved automatically */ },
       'expired-callback': () => {
-        // Reset verifier on expiry so next send recreates it
         try { recaptchaVerifierRef.current?.clear(); } catch { /* ignore */ }
         recaptchaVerifierRef.current = null;
       },
     });
 
-    await verifier.render();
     recaptchaVerifierRef.current = verifier;
+    await verifier.render();
     return verifier;
   }, []);
 
@@ -96,7 +126,7 @@ export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
     setCode('');
 
     try {
-      const { signInWithPhoneNumber } = await import('@firebase/auth');
+      const { signInWithPhoneNumber } = await import('firebase/auth');
       const auth = await getFirebaseAuth();
       const verifier = await setupRecaptcha();
 
@@ -109,16 +139,7 @@ export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
       recaptchaVerifierRef.current = null;
       setPanelState({ step: 'idle' });
 
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('invalid-phone-number') || msg.includes('INVALID_PHONE_NUMBER')) {
-        setError('Invalid phone number format. Use international format e.g. +919876543210.');
-      } else if (msg.includes('too-many-requests') || msg.includes('TOO_MANY_ATTEMPTS')) {
-        setError('Too many SMS requests. Please wait a few minutes before trying again.');
-      } else if (msg.includes('quota-exceeded') || msg.includes('QUOTA_EXCEEDED')) {
-        setError('Firebase SMS quota exceeded for today. Try again tomorrow or use email OTP.');
-      } else {
-        setError(`Could not send OTP: ${msg}`);
-      }
+      setError(getFirebaseErrorMessage(err));
     }
   };
 
@@ -129,21 +150,43 @@ export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
     setPanelState({ step: 'verifying', confirmationResult });
     setError(null);
 
+    let firebaseConfirmationSucceeded = false;
     try {
+      const auth = await getFirebaseAuth();
       const result = await confirmationResult.confirm(code);
+      firebaseConfirmationSucceeded = true;
       const idToken = await result.user.getIdToken();
-      await onVerified(idToken);
+      let completionError: unknown;
+      try {
+        await onVerified(idToken);
+      } catch (cause) {
+        completionError = cause;
+      }
+      try {
+        const { signOut } = await import('firebase/auth');
+        await signOut(auth);
+      } catch {
+        completionError ??= new Error('Could not safely finish phone verification. Please try again.');
+      }
+      if (completionError) throw completionError;
       setPanelState({ step: 'done' });
     } catch (err: unknown) {
-      setPanelState({ step: 'awaiting_code', confirmationResult });
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('invalid-verification-code') || msg.includes('INVALID_CODE')) {
-        setError('Incorrect OTP. Please check the SMS and try again.');
-      } else if (msg.includes('session-expired') || msg.includes('CODE_EXPIRED')) {
-        setError('This OTP has expired. Please request a new one.');
+      if (firebaseConfirmationSucceeded) {
+        try { recaptchaVerifierRef.current?.clear(); } catch { /* best-effort verifier cleanup */ }
+        recaptchaVerifierRef.current = null;
         setPanelState({ step: 'idle' });
+        setCountdown(0);
+        setCode('');
+        setError(err instanceof Error ? err.message : 'Could not complete phone verification. Please request a new code.');
       } else {
-        setError(`Verification failed: ${msg}`);
+        const code = getFirebaseErrorCode(err);
+        if (code === 'auth/code-expired' || code === 'auth/session-expired') {
+          setPanelState({ step: 'idle' });
+          setCountdown(0);
+        } else {
+          setPanelState({ step: 'awaiting_code', confirmationResult });
+        }
+        setError(getFirebaseErrorMessage(err));
       }
     }
   };
@@ -163,7 +206,7 @@ export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
   return (
     <div className="mt-2 space-y-2">
       {/* Invisible reCAPTCHA anchor — Firebase requires a DOM node */}
-      <div ref={recaptchaContainerRef} />
+      <div id="recaptcha-container" ref={recaptchaContainerRef} />
 
       {/* Send / Resend button row */}
       <div className="flex items-center gap-2">
@@ -185,7 +228,7 @@ export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
           }
         </button>
         <span className="text-[10px] text-slate-500">
-          {firebaseAuthConfigured ? 'Real SMS via Google Firebase · Free' : 'Firebase not configured'}
+          {firebaseAuthConfigured ? 'SMS verification via Firebase' : 'Firebase not configured'}
         </span>
       </div>
 
@@ -233,4 +276,3 @@ export const FirebasePhoneOtpPanel: React.FC<FirebasePhoneOtpPanelProps> = ({
 };
 
 export default FirebasePhoneOtpPanel;
-

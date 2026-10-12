@@ -96,6 +96,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     saveSession(await authApi.firebase({ idToken, mode, ...profile }));
   };
 
+  const authenticatePhoneFirebase: AuthContextValue['authenticatePhoneFirebase'] = async (idToken, mode, profile) => {
+    saveSession(await authApi.phoneFirebaseVerify({ idToken, mode, ...profile }));
+  };
+
   const logout = () => {
     void authApi.logout().catch((error: unknown) => {
       console.warn('Backend logout failed; local session was cleared.', error);
@@ -103,7 +107,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     removeAuthToken();
     if (firebaseAuthConfigured) {
       void getFirebaseAuth().then(async (auth) => {
-        const { signOut } = await import('@firebase/auth');
+        const { signOut } = await import('firebase/auth');
         return signOut(auth);
       }).catch((error: unknown) => {
         console.warn('Firebase logout failed after clearing the local session.', error);
@@ -125,7 +129,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn, isInitializing, login, sendOtp, verifyOtp, authenticateFirebase, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, isLoggedIn, isInitializing, login, sendOtp, verifyOtp, authenticateFirebase, authenticatePhoneFirebase, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

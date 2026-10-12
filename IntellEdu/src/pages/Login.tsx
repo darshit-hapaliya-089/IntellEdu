@@ -9,16 +9,19 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { cx } from '../utils/cx';
 import FirebaseAuthOptions from '../components/auth/FirebaseAuthOptions';
+import FirebasePhoneOtpPanel from '../components/auth/FirebasePhoneOtpPanel';
 import OtpVerificationPanel from '../components/auth/OtpVerificationPanel';
 import WhatsAppOtpPanel from '../components/auth/WhatsAppOtpPanel';
 import PhoneNumberField from '../components/auth/PhoneNumberField';
 import { authApi } from '../services/api';
+import { firebaseAuthConfigured } from '../services/firebase';
 
 type FormErrors = Partial<Record<keyof LoginFormData, string>>;
+const whatsappOptionEnabled = import.meta.env.VITE_ENABLE_WHATSAPP_OPTION === 'true';
 
 export const Login: React.FC = () => {
   const { highGraphics } = usePerformanceMode();
-  const { login, sendOtp, verifyOtp, authenticateFirebase } = useAuth();
+  const { login, sendOtp, verifyOtp, authenticateFirebase, authenticatePhoneFirebase } = useAuth();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState<LoginFormData>({
@@ -33,9 +36,18 @@ export const Login: React.FC = () => {
   const [authError, setAuthError] = useState<string | null>(null);
   const [loginByPhone, setLoginByPhone] = useState(false);
   const [phone, setPhone] = useState('');
+  const [smsAvailable, setSmsAvailable] = useState(false);
+  const [phoneOtpChannel, setPhoneOtpChannel] = useState<'sms' | 'whatsapp'>('sms');
 
   useEffect(() => {
-    void authApi.health();
+    void authApi.health()
+      .then(() => authApi.channels())
+      .then(({ sms }) => {
+        const available = sms && firebaseAuthConfigured;
+        setSmsAvailable(available);
+        if (!available && whatsappOptionEnabled) setPhoneOtpChannel('whatsapp');
+      })
+      .catch(() => setSmsAvailable(false));
   }, []);
 
   const validate = (): boolean => {
@@ -66,7 +78,7 @@ export const Login: React.FC = () => {
     if (loginByPhone && !isValidPhoneNumber(recipient)) {
       throw new Error('Enter a valid local phone number for the selected country.');
     }
-    const channel = channelOverride || (loginByPhone ? 'whatsapp' : 'email');
+    const channel = channelOverride || 'email';
     return sendOtp({
       channel,
       flow: 'login',
@@ -103,6 +115,17 @@ export const Login: React.FC = () => {
       navigate('/dashboard');
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Verified sign in failed.');
+      throw err;
+    }
+  };
+
+  const handlePhoneFirebaseAuth = async (idToken: string) => {
+    setAuthError(null);
+    try {
+      await authenticatePhoneFirebase(idToken, 'login');
+      navigate('/dashboard');
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Phone verification sign-in failed.');
       throw err;
     }
   };
@@ -189,15 +212,15 @@ export const Login: React.FC = () => {
                   >
                     Email
                   </button>
-                  <button
+                  {(smsAvailable || whatsappOptionEnabled) && <button
                     type="button"
                     role="tab"
                     aria-selected={loginByPhone}
                     onClick={() => { setLoginByPhone(true); setErrors({}); }}
                     className={`rounded-lg px-3 py-2 text-xs font-bold ${loginByPhone ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}
                   >
-                    Phone
-                  </button>
+                    Phone (SMS)
+                  </button>}
                 </div>
                 <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-700 sm:text-xs">
                   {loginByPhone ? 'Phone number' : 'Email address'}
@@ -229,7 +252,42 @@ export const Login: React.FC = () => {
                 {errors.emailOrPhone && (
                   <p className="text-[11px] font-semibold text-rose-500 mt-1">{errors.emailOrPhone}</p>
                 )}
-                {loginByPhone && phone.trim() && (
+                {loginByPhone && phone.trim() && !isValidPhoneNumber(phone.trim()) && (
+                  <p className="text-[11px] font-semibold text-rose-500 mt-1">Enter a valid phone number for the selected country.</p>
+                )}
+                {loginByPhone && phone.trim() && whatsappOptionEnabled && (
+                  <fieldset className="mt-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                    {smsAvailable && <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-indigo-700">
+                      <input
+                        type="radio"
+                        name="login-phone-channel"
+                        checked={phoneOtpChannel === 'sms'}
+                        onChange={() => setPhoneOtpChannel('sms')}
+                        className="accent-indigo-600"
+                      />
+                      Phone (SMS) OTP
+                    </label>}
+                    <label className="inline-flex cursor-pointer items-center gap-2 font-semibold text-emerald-700">
+                      <input
+                        type="radio"
+                        name="login-phone-channel"
+                        checked={phoneOtpChannel === 'whatsapp'}
+                        onChange={() => setPhoneOtpChannel('whatsapp')}
+                        className="accent-emerald-600"
+                      />
+                      WhatsApp OTP
+                    </label>
+                  </fieldset>
+                )}
+                {loginByPhone && phone.trim() && phoneOtpChannel === 'sms' && smsAvailable && (
+                  <FirebasePhoneOtpPanel
+                    key={`login-sms-${phone.trim()}`}
+                    phoneNumber={phone.trim()}
+                    disabled={isSubmitting || !isValidPhoneNumber(phone.trim())}
+                    onVerified={handlePhoneFirebaseAuth}
+                  />
+                )}
+                {loginByPhone && phone.trim() && phoneOtpChannel === 'whatsapp' && whatsappOptionEnabled && (
                   <WhatsAppOtpPanel
                     key={`login-whatsapp-${phone.trim()}`}
                     recipient={phone.trim()}

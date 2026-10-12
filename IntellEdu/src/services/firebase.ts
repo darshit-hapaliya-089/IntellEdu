@@ -19,8 +19,8 @@ export async function getFirebaseAuth() {
   }
 
   const [firebaseApp, firebaseAuth] = await Promise.all([
-    import('@firebase/app'),
-    import('@firebase/auth'),
+    import('firebase/app'),
+    import('firebase/auth'),
   ]);
   const app = firebaseApp.getApps()[0] ?? firebaseApp.initializeApp(firebaseConfig);
   return firebaseAuth.getAuth(app);

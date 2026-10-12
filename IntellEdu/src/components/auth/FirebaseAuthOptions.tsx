@@ -20,7 +20,7 @@ export const FirebaseAuthOptions: React.FC<FirebaseAuthOptionsProps> = ({
     setBusy(true);
     setError(null);
     try {
-      const { GoogleAuthProvider, signInWithPopup } = await import('@firebase/auth');
+      const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
       const credential = await signInWithPopup(await getFirebaseAuth(), new GoogleAuthProvider());
       await onAuthenticate(await credential.user.getIdToken());
     } catch (cause) {
