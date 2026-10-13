@@ -45,24 +45,13 @@ export const Dashboard: React.FC = () => {
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const pingedRef = useRef<boolean>(false);
-  const [streakToast, setStreakToast] = useState<{ show: boolean; streak: number; bonusXp?: number } | null>(null);
 
-  // Ping streak on app load (Asia/Kolkata day calculation)
+  // Ping streak silently on app load (Asia/Kolkata day calculation)
   useEffect(() => {
     if (pingedRef.current || !user?.id) return;
     pingedRef.current = true;
 
     progressApi.pingStreak()
-      .then((res) => {
-        if (res.streakIncreasedToday) {
-          setStreakToast({
-            show: true,
-            streak: res.currentStreak,
-            bonusXp: res.milestoneBonusXp,
-          });
-          setTimeout(() => setStreakToast(null), 5500);
-        }
-      })
       .catch((err) => {
         console.warn('Daily streak ping was deferred.', err);
       });
@@ -255,7 +244,7 @@ export const Dashboard: React.FC = () => {
               : 'bg-white border-slate-200'
           )}
         >
-        {/* Mobile Sidebar Toggle Button */}
+          {/* Mobile Sidebar Toggle Button */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               onClick={() => setMobileSidebarOpen(true)}
@@ -269,36 +258,10 @@ export const Dashboard: React.FC = () => {
               {sidebarItems.find((item) => item.key === activeTab)?.label ?? 'Overview'}
             </h1>
           </div>
+
           {/* Top Bar Right Controls */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Header Streak Badge */}
-            <div
-              title={user?.isActiveToday ? 'Streak logged today!' : 'Keep your streak alive — complete a quiz today!'}
-              className={cx(
-                'flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-xs font-black transition-all select-none',
-                user?.isActiveToday
-                  ? highGraphics
-                    ? 'bg-amber-500/10 border border-amber-500/30 text-amber-700 shadow-xs'
-                    : 'bg-amber-100 text-amber-800'
-                  : 'bg-slate-100 border border-amber-300 text-slate-700 hover:border-amber-400'
-              )}
-            >
-              <Flame
-                className={cx(
-                  'w-3.5 h-3.5 sm:w-4 sm:h-4',
-                  user?.isActiveToday
-                    ? 'text-amber-500 fill-amber-400 animate-pulse'
-                    : 'text-amber-500'
-                )}
-              />
-              <span className="font-extrabold">{user?.streak ?? 1} Day Streak</span>
-              {!user?.isActiveToday && (
-                <span className="hidden xl:inline text-[10px] text-amber-600 font-semibold ml-0.5">
-                  (Keep it alive!)
-                </span>
-              )}
-            </div>
-
+            
             {/* Header XP Balance */}
             <div className="hidden xs:flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-black">
               <Award className="w-3.5 h-3.5 text-indigo-600" />
@@ -337,12 +300,10 @@ export const Dashboard: React.FC = () => {
                       : 'bg-white border border-slate-200 shadow-xl'
                   )}
                 >
-                  {/* Top gradient accent */}
                   {highGraphics && (
                     <div className="h-1 w-full bg-linear-to-r from-indigo-500 via-violet-500 to-pink-500" />
                   )}
 
-                  {/* Header */}
                   <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100">
                     <div className="flex items-center gap-2">
                       <div className={cx(
@@ -406,12 +367,10 @@ export const Dashboard: React.FC = () => {
                       : 'bg-white border border-slate-200 shadow-xl'
                   )}
                 >
-                  {/* Top gradient */}
                   {highGraphics && (
                     <div className="h-1 w-full bg-linear-to-r from-indigo-500 via-purple-500 to-pink-500" />
                   )}
 
-                  {/* Profile hero */}
                   <div className={cx(
                     'p-5 border-b border-slate-100',
                     highGraphics && 'bg-linear-to-b from-indigo-50/50 to-transparent'
@@ -445,7 +404,6 @@ export const Dashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* XP Stats bar */}
                     <div className={cx(
                       'mt-4 p-3 rounded-2xl flex items-center justify-between',
                       highGraphics
@@ -474,7 +432,6 @@ export const Dashboard: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Menu actions */}
                   <div className="p-2 space-y-1">
                     <button
                       onClick={() => { handleTabChange('overview'); setProfileOpen(false); }}
@@ -521,14 +478,12 @@ export const Dashboard: React.FC = () => {
                           <span className="text-[10px] text-slate-400">24/7 instant homework help</span>
                         </div>
                       </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-violet-600 group-hover:translate-x-0.5 transition-all" />
+                      <ArrowRight className="w-3.5 h-3.5 text-violet-600 group-hover:translate-x-0.5 transition-all" />
                     </button>
                   </div>
 
-                  {/* Divider */}
                   <div className="h-px bg-linear-to-r from-transparent via-slate-200 to-transparent mx-3" />
 
-                  {/* Logout */}
                   <div className="p-2">
                     <button
                       onClick={() => { setProfileOpen(false); handleLogout(); }}
@@ -550,38 +505,6 @@ export const Dashboard: React.FC = () => {
           </div>
         </header>
 
-        {/* STREAK INCREASED TOAST */}
-        {streakToast && (
-          <div className="fixed top-20 right-4 sm:right-8 z-50 animate-bounce transition-all">
-            <div className={cx(
-              'flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border',
-              highGraphics
-                ? 'bg-linear-to-r from-amber-500 via-orange-500 to-rose-500 text-white border-amber-300/40 shadow-amber-500/25'
-                : 'bg-amber-600 text-white border-amber-500'
-            )}>
-              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0">
-                <Flame className="w-5 h-5 text-amber-200 fill-amber-200 animate-pulse" />
-              </div>
-              <div>
-                <p className="text-xs font-black tracking-wide uppercase">Streak Alive!</p>
-                <p className="text-sm font-extrabold">🔥 Day {streakToast.streak} Streak Logged!</p>
-                {streakToast.bonusXp && (
-                  <p className="text-[11px] font-bold text-amber-100">
-                    Milestone Reward: +{streakToast.bonusXp} XP bonus awarded!
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setStreakToast(null)}
-                className="ml-2 p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
         <main className="flex-1 p-3.5 sm:p-6 lg:p-8 xl:p-10 pb-24 lg:pb-8 w-full animate-fade-slide-up">
           <Outlet />
         </main>
@@ -589,9 +512,6 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* MOBILE BOTTOM NAVIGATION BAR (lg:hidden) */}
-      {/* ─────────────────────────────────────────────────────
-           MOBILE BOTTOM NAVIGATION BAR — Premium Animated
-      ───────────────────────────────────────────────────── */}
       <nav
         className={cx(
           'lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-slate-200/60',
@@ -601,14 +521,11 @@ export const Dashboard: React.FC = () => {
         )}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        {/* Gradient top-border accent (High Graphics only) */}
         {highGraphics && (
           <div className="absolute inset-x-0 top-0 h-0.5 bg-linear-to-r from-indigo-500 via-violet-500 to-indigo-400 pointer-events-none" />
         )}
 
-        {/* Sliding active pill indicator */}
         <div className="relative px-1">
-          {/* Pill */}
           <div
             className={cx(
               'absolute top-1 h-[calc(100%-8px)] rounded-2xl transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] pointer-events-none',
@@ -620,7 +537,6 @@ export const Dashboard: React.FC = () => {
             }}
           />
 
-          {/* Nav buttons */}
           <div className="flex items-center justify-around py-1.5">
             {bottomNavItems.map((item) => {
               const IconComp = item.icon;
@@ -634,9 +550,7 @@ export const Dashboard: React.FC = () => {
                   aria-label={item.label}
                   aria-current={isActive ? 'page' : undefined}
                 >
-                  {/* Icon wrapper with bounce + ripple */}
                   <div className="relative flex items-center justify-center">
-                    {/* Ripple on tap */}
                     {isBouncing && highGraphics && (
                       <span className="absolute w-8 h-8 rounded-full bg-indigo-400/30 animate-nav-ripple pointer-events-none" />
                     )}
@@ -655,7 +569,6 @@ export const Dashboard: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Label */}
                   <span
                     className={cx(
                       'text-[9px] xs:text-[10px] font-semibold leading-tight transition-colors duration-200 tracking-wide',
@@ -665,7 +578,6 @@ export const Dashboard: React.FC = () => {
                     {item.label}
                   </span>
 
-                  {/* Active dot */}
                   {isActive && (
                     <span className={cx(
                       'absolute -bottom-0.5 w-1 h-1 rounded-full',
