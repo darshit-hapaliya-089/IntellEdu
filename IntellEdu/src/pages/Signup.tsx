@@ -41,6 +41,7 @@ export const Signup: React.FC = () => {
   const [authError, setAuthError] = useState<string | null>(null);
   const [preferredOtpChannel, setPreferredOtpChannel] = useState<SignupOtpChannel | null>(null);
   const [phoneVerified, setPhoneVerified] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
 
   useEffect(() => {
     void authApi.health();
@@ -55,6 +56,13 @@ export const Signup: React.FC = () => {
     : formData.phone.trim()
       ? 'sms'
       : 'email';
+
+  const isCreateDisabled =
+    !formData.fullName.trim() ||
+    !formData.password ||
+    !formData.confirmPassword ||
+    !formData.acceptedTerms ||
+    (selectedChannel === 'sms' ? !formData.phone.trim() || !phoneVerified : !formData.email.trim() || !emailVerified);
 
   const validate = (): boolean => {
     const newErrors: SignupErrors = {};
@@ -452,21 +460,19 @@ export const Signup: React.FC = () => {
 
               <p className="text-center text-[11px] text-slate-500">
                 {selectedChannel === 'sms'
-                  ? 'Verify with Phone (SMS) is selected. Any email entered is saved but will not be verified.'
+                  ? 'Verify with Phone (SMS) is selected. Phone number verification is required before account creation.'
                   : selectedChannel === 'whatsapp'
                     ? 'WhatsApp verification is selected. Any email entered is saved.'
-                    : 'Verify with Email is selected. Any phone number entered is saved but will not be verified.'}
-                {selectedChannel !== 'sms' && selectedChannel !== 'whatsapp' && ' The 6-digit email OTP expires in 60 seconds.'}
+                    : 'Verify with Email is selected. Email verification is required before account creation. The 6-digit email OTP expires in 60 seconds.'}
               </p>
-              {phoneVerified && (
-                <button
-                  type="button"
-                  onClick={() => navigate('/dashboard')}
-                  className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-extrabold text-white shadow-md transition-colors hover:bg-indigo-700"
-                >
-                  Continue to IntellEdu
-                </button>
-              )}
+
+              <button
+                type="button"
+                disabled={isSubmitting || isCreateDisabled}
+                className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-extrabold text-white shadow-md transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Create Account
+              </button>
             </form>
 
             {authError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-600">{authError}</p>}
