@@ -9,6 +9,11 @@ export interface AuthUser {
   phone?: string | null;
   grade: string;
   streak: number;
+  currentStreak?: number;
+  longestStreak?: number;
+  lastActivityDate?: string | null;
+  isActiveToday?: boolean;
+  streakIncreasedToday?: boolean;
   points: number;
   avatar: string;
   badge?: string | null;

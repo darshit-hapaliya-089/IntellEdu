@@ -98,10 +98,19 @@ export interface AuthResponse {
     grade: string;
     points: number;
     streak: number;
+    currentStreak?: number;
+    longestStreak?: number;
+    lastActivityDate?: string | null;
+    streakIncreasedToday?: boolean;
+    isActiveToday?: boolean;
     badge?: string;
     role: string;
     avatarUrl?: string;
   };
+  currentStreak?: number;
+  longestStreak?: number;
+  lastActivityDate?: string | null;
+  streakIncreasedToday?: boolean;
 }
 
 export interface OtpChallengeResponse {
@@ -193,6 +202,15 @@ export const authApi = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+
+  uploadAvatar: (imageBase64: string, mimeType: string) =>
+    request<{ message: string; avatarUrl: string }>('/users/me/avatar', {
+      method: 'POST',
+      body: JSON.stringify({ imageBase64, mimeType }),
+    }),
+
+  removeAvatar: () =>
+    request<{ message: string }>('/users/me/avatar', { method: 'DELETE' }),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -279,13 +297,24 @@ export interface QuizData {
   description?: string;
   grade?: string;
   subject?: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
   xpReward: number;
   timeLimitMinutes: number;
+  iconKey?: string;
+  completedToday?: boolean;
+  bestScoreToday?: number | null;
   questions?: Array<{
     id: number;
     question: string;
     options: string[];
   }>;
+}
+
+export interface DailyQuizzesResponse {
+  date: string;
+  resetsAt: string;
+  grade: string;
+  quizzes: QuizData[];
 }
 
 export interface QuizResultHistory {
@@ -295,8 +324,9 @@ export interface QuizResultHistory {
   accuracy: number;
   xpEarned: number;
   timeTakenSeconds?: number | null;
+  quizDate?: string;
   createdAt: string;
-  quiz: { id: number | string; title: string };
+  quiz: { id: number | string; title: string; subject?: string };
 }
 
 export interface QuizSubmitResult {
@@ -325,15 +355,23 @@ export const quizzesApi = {
     return request<{ quizzes: QuizData[] }>(`/quizzes${query ? `?${query}` : ''}`);
   },
 
+  getDaily: (params?: { grade?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.grade) queryParams.set('grade', params.grade);
+    const query = queryParams.toString();
+    return request<DailyQuizzesResponse>(`/quizzes/daily${query ? `?${query}` : ''}`);
+  },
+
   getById: (id: string | number) => request<{ quiz: QuizData }>(`/quizzes/${id}`),
+
+  getMyResults: (page = 1) =>
+    request<{ results: QuizResultHistory[]; meta?: any }>(`/quizzes/my-results?page=${page}`),
 
   submit: (id: string | number, answers: number[], timeTakenSeconds?: number) =>
     request<QuizSubmitResult>(`/quizzes/${id}/submit`, {
       method: 'POST',
       body: JSON.stringify({ answers, timeTakenSeconds }),
     }),
-
-  getMyResults: () => request<{ results: QuizResultHistory[] }>('/quizzes/my-results'),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,6 +427,8 @@ export interface UserProgress {
   userId: number | string;
   points: number;
   streak: number;
+  currentStreak?: number;
+  longestStreak?: number;
   badge: string;
   coursesEnrolled: number;
   coursesCompleted: number;
@@ -398,14 +438,73 @@ export interface UserProgress {
   recentQuizActivity: QuizResultHistory[];
 }
 
+export interface StreakInfoResponse {
+  streak: number;
+  currentStreak: number;
+  longestStreak: number;
+  lastActivityDate: string | null;
+  isActiveToday: boolean;
+  streakIncreasedToday?: boolean;
+  badge?: string;
+}
+
+export interface StreakPingResponse {
+  message: string;
+  streak: number;
+  currentStreak: number;
+  longestStreak: number;
+  lastActivityDate: string;
+  streakIncreasedToday: boolean;
+  milestoneBonusXp?: number;
+  points: number;
+  currentXpBalance?: number;
+}
+
+export interface ProgressOverviewHeatmapDay {
+  date: string; // YYYY-MM-DD IST
+  active: boolean;
+  xpEarned: number;
+  quizCount: number;
+}
+
+export interface ProgressOverviewXpDay {
+  date: string;
+  xp: number;
+}
+
+export interface ProgressOverviewSubjectAccuracy {
+  subject: string;
+  accuracy: number;
+  quizCount: number;
+}
+
+export interface ProgressOverview {
+  totalXp: number;
+  currentStreak: number;
+  longestStreak: number;
+  lastActivityDate: string | null;
+  isActiveToday: boolean;
+  quizzesTaken: number;
+  averageAccuracy: number;
+  coursesEnrolled: number;
+  coursesCompleted: number;
+  heatmap: ProgressOverviewHeatmapDay[];          // last 30 IST days
+  xpByDay: ProgressOverviewXpDay[];               // last 30 IST days
+  accuracyBySubject: ProgressOverviewSubjectAccuracy[];
+  enrolledCourses: CourseData[];
+  recentQuizActivity: QuizResultHistory[];
+}
+
 export const progressApi = {
   getMyProgress: () => request<{ progress: UserProgress }>('/progress'),
 
+  getOverview: () => request<{ overview: ProgressOverview }>('/progress/overview'),
+
   getStreak: () =>
-    request<{ streak: number; isActiveToday: boolean; badge?: string }>('/progress/streak'),
+    request<StreakInfoResponse>('/progress/streak'),
 
   pingStreak: () =>
-    request<{ message: string; streak: number; points: number }>('/progress/streak/ping', {
+    request<StreakPingResponse>('/progress/streak/ping', {
       method: 'POST',
     }),
 };

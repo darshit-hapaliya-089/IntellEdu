@@ -13,6 +13,7 @@ import {
   Save,
   ShieldCheck,
   Sparkles,
+  Upload,
   User,
   Volume2,
   Zap,
@@ -24,6 +25,7 @@ import { cx } from '../../utils/cx';
 import PerformanceToggle from '../PerformanceToggle';
 import LanguageSelector from '../LanguageSelector';
 import { getStoredValue, setStoredValue } from '../../utils/storage';
+import AvatarUploader from './AvatarUploader';
 
 const AVATAR_OPTIONS = [
   'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=250&q=80',
@@ -292,47 +294,60 @@ export const SettingsPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* SECTION 2: Avatar Selection Gallery */}
+        {/* SECTION 2: Profile Photo Upload */}
         <div
           className={cx(
-            'p-5 sm:p-6 rounded-2xl sm:rounded-3xl border space-y-4',
+            'p-5 sm:p-6 rounded-2xl sm:rounded-3xl border space-y-5',
             highGraphics ? 'bg-white/90 border-slate-200/80 shadow-xs' : 'bg-white border-slate-200'
           )}
         >
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              <h3 className="text-sm sm:text-base font-black text-slate-900">Choose Profile Avatar</h3>
-            </div>
-            <span className="text-[11px] text-slate-400 font-bold">Select one</span>
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <Upload className="w-4 h-4 text-indigo-500" />
+            <h3 className="text-sm sm:text-base font-black text-slate-900">Profile Photo</h3>
           </div>
 
-          <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 sm:gap-4">
-            {AVATAR_OPTIONS.map((avatarUrl, idx) => {
-              const isSelected = selectedAvatar === avatarUrl;
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setSelectedAvatar(avatarUrl)}
-                  className={cx(
-                    'relative rounded-full aspect-square overflow-hidden border-2 transition-all cursor-pointer p-0.5',
-                    isSelected
-                      ? 'border-indigo-600 ring-3 ring-indigo-200 scale-105 shadow-md'
-                      : 'border-slate-200 hover:border-indigo-300 hover:scale-102'
-                  )}
-                >
-                  <img src={avatarUrl} alt={`Avatar ${idx + 1}`} className="w-full h-full rounded-full object-cover" />
-                  {isSelected && (
-                    <span className="absolute inset-0 bg-indigo-600/30 flex items-center justify-center rounded-full text-white">
-                      <Check className="w-4 h-4 stroke-3" />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          {/* Custom photo uploader */}
+          <AvatarUploader
+            currentAvatar={selectedAvatar}
+            userName={fullName}
+            onSuccess={(url) => setSelectedAvatar(url)}
+            onRemove={() => setSelectedAvatar(AVATAR_OPTIONS[0])}
+          />
+
+          {/* Preset avatar gallery */}
+          <div className="space-y-3 border-t border-slate-100 pt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-slate-600">Or choose a preset avatar</p>
+              <span className="text-[11px] text-slate-400">Click to select</span>
+            </div>
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 sm:gap-4">
+              {AVATAR_OPTIONS.map((avatarUrl, idx) => {
+                const isSelected = selectedAvatar === avatarUrl;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setSelectedAvatar(avatarUrl)}
+                    className={cx(
+                      'relative rounded-full aspect-square overflow-hidden border-2 transition-all cursor-pointer p-0.5',
+                      isSelected
+                        ? 'border-indigo-600 ring-3 ring-indigo-200 scale-105 shadow-md'
+                        : 'border-slate-200 hover:border-indigo-300 hover:scale-102'
+                    )}
+                  >
+                    <img src={avatarUrl} alt={`Avatar ${idx + 1}`} className="w-full h-full rounded-full object-cover" />
+                    {isSelected && (
+                      <span className="absolute inset-0 bg-indigo-600/30 flex items-center justify-center rounded-full text-white">
+                        <Check className="w-4 h-4 stroke-3" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
+
 
         {/* SECTION 3: Change Password */}
         <div

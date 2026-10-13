@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { usePerformanceMode } from '../context/PerformanceModeContext';
 import { useAuth } from '../context/useAuth';
+import { progressApi } from '../services/api';
 import {
   SidebarItem,
   SidebarKey
@@ -43,6 +44,29 @@ export const Dashboard: React.FC = () => {
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const pingedRef = useRef<boolean>(false);
+  const [streakToast, setStreakToast] = useState<{ show: boolean; streak: number; bonusXp?: number } | null>(null);
+
+  // Ping streak on app load (Asia/Kolkata day calculation)
+  useEffect(() => {
+    if (pingedRef.current || !user?.id) return;
+    pingedRef.current = true;
+
+    progressApi.pingStreak()
+      .then((res) => {
+        if (res.streakIncreasedToday) {
+          setStreakToast({
+            show: true,
+            streak: res.currentStreak,
+            bonusXp: res.milestoneBonusXp,
+          });
+          setTimeout(() => setStreakToast(null), 5500);
+        }
+      })
+      .catch((err) => {
+        console.warn('Daily streak ping was deferred.', err);
+      });
+  }, [user?.id]);
 
   // Lock body scroll when mobile sidebar is open
   useEffect(() => {
@@ -247,6 +271,40 @@ export const Dashboard: React.FC = () => {
           </div>
           {/* Top Bar Right Controls */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Header Streak Badge */}
+            <div
+              title={user?.isActiveToday ? 'Streak logged today!' : 'Keep your streak alive — complete a quiz today!'}
+              className={cx(
+                'flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-xs font-black transition-all select-none',
+                user?.isActiveToday
+                  ? highGraphics
+                    ? 'bg-amber-500/10 border border-amber-500/30 text-amber-700 shadow-xs'
+                    : 'bg-amber-100 text-amber-800'
+                  : 'bg-slate-100 border border-amber-300 text-slate-700 hover:border-amber-400'
+              )}
+            >
+              <Flame
+                className={cx(
+                  'w-3.5 h-3.5 sm:w-4 sm:h-4',
+                  user?.isActiveToday
+                    ? 'text-amber-500 fill-amber-400 animate-pulse'
+                    : 'text-amber-500'
+                )}
+              />
+              <span className="font-extrabold">{user?.streak ?? 1} Day Streak</span>
+              {!user?.isActiveToday && (
+                <span className="hidden xl:inline text-[10px] text-amber-600 font-semibold ml-0.5">
+                  (Keep it alive!)
+                </span>
+              )}
+            </div>
+
+            {/* Header XP Balance */}
+            <div className="hidden xs:flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-black">
+              <Award className="w-3.5 h-3.5 text-indigo-600" />
+              <span>{(user?.points ?? 0).toLocaleString()} XP</span>
+            </div>
+
             <LanguageSelector compactOnMobile />
             <PerformanceToggle compact />
 
@@ -491,6 +549,38 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
         </header>
+
+        {/* STREAK INCREASED TOAST */}
+        {streakToast && (
+          <div className="fixed top-20 right-4 sm:right-8 z-50 animate-bounce transition-all">
+            <div className={cx(
+              'flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border',
+              highGraphics
+                ? 'bg-linear-to-r from-amber-500 via-orange-500 to-rose-500 text-white border-amber-300/40 shadow-amber-500/25'
+                : 'bg-amber-600 text-white border-amber-500'
+            )}>
+              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0">
+                <Flame className="w-5 h-5 text-amber-200 fill-amber-200 animate-pulse" />
+              </div>
+              <div>
+                <p className="text-xs font-black tracking-wide uppercase">Streak Alive!</p>
+                <p className="text-sm font-extrabold">🔥 Day {streakToast.streak} Streak Logged!</p>
+                {streakToast.bonusXp && (
+                  <p className="text-[11px] font-bold text-amber-100">
+                    Milestone Reward: +{streakToast.bonusXp} XP bonus awarded!
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setStreakToast(null)}
+                className="ml-2 p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         <main className="flex-1 p-3.5 sm:p-6 lg:p-8 xl:p-10 pb-24 lg:pb-8 w-full animate-fade-slide-up">
           <Outlet />
