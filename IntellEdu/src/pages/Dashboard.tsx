@@ -11,7 +11,6 @@ import {
   Bell,
   Flame,
   Award,
-  Menu,
   X,
   Sparkles,
   Home,
@@ -38,7 +37,6 @@ export const Dashboard: React.FC = () => {
 
   const activeTab = (location.pathname.split('/')[2] as SidebarKey | undefined) || 'overview';
   const [bouncingTab, setBouncingTab] = useState<SidebarKey | null>(null);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
   const [notificationsOpen, setNotificationsOpen] = useState<boolean>(false);
   const [profileOpen, setProfileOpen] = useState<boolean>(false);
 
@@ -57,18 +55,6 @@ export const Dashboard: React.FC = () => {
       });
   }, [user?.id]);
 
-  // Lock body scroll when mobile sidebar is open
-  useEffect(() => {
-    if (mobileSidebarOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [mobileSidebarOpen]);
-
   // Close popups on outside click
   useEffect(() => {
     const handleOutside = (e: MouseEvent) => {
@@ -81,6 +67,18 @@ export const Dashboard: React.FC = () => {
     };
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  // Close dropdowns on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setNotificationsOpen(false);
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const handleLogout = () => {
@@ -120,21 +118,9 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row text-slate-900 sidebar-none overflow-x-hidden">
 
-      {/* MOBILE BACKDROP OVERLAY */}
-      {mobileSidebarOpen && (
-        <div
-          onClick={() => setMobileSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden transition-opacity"
-          aria-hidden="true"
-        />
-      )}
-
-      {/* SIDEBAR (Desktop Left Sidebar / Mobile Drawer) */}
+      {/* ─── SIDEBAR ─── Desktop persistent left sidebar (lg+). Hidden on mobile. ── */}
       <aside
-        className={cx(
-          'fixed inset-y-0 left-0 z-50 w-64 xs:w-72 sm:w-80 lg:w-64 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-300 shadow-2xl lg:shadow-none overflow-y-auto overscroll-contain',
-          mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        )}
+        className="hidden lg:flex fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 flex-col shadow-2xl lg:shadow-none overflow-y-auto overscroll-contain"
       >
         {/* Sidebar Brand Header */}
         <div className="p-5 sm:p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
@@ -161,14 +147,6 @@ export const Dashboard: React.FC = () => {
               </span>
             </div>
           </div>
-
-          <button
-            onClick={() => setMobileSidebarOpen(false)}
-            className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
-            aria-label="Close sidebar"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
         {/* Navigation Items */}
@@ -181,7 +159,6 @@ export const Dashboard: React.FC = () => {
                 key={item.key}
                 onClick={() => {
                   handleTabChange(item.key);
-                  setMobileSidebarOpen(false);
                 }}
                 className={cx(
                   'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer active:scale-98',
@@ -244,16 +221,8 @@ export const Dashboard: React.FC = () => {
               : 'bg-white border-slate-200'
           )}
         >
-          {/* Mobile Sidebar Toggle Button */}
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button
-              onClick={() => setMobileSidebarOpen(true)}
-              className="lg:hidden p-1.5 sm:p-2 rounded-xl text-slate-700 hover:bg-slate-100 cursor-pointer active:scale-95"
-              aria-label="Open sidebar menu"
-            >
-              <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
-            </button>
-
+          {/* Page title — no hamburger gap on mobile; left-aligned naturally */}
+          <div className="flex items-center min-w-0">
             <h1 className="text-sm sm:text-base lg:text-lg font-bold text-slate-900 capitalize truncate">
               {sidebarItems.find((item) => item.key === activeTab)?.label ?? 'Overview'}
             </h1>
@@ -284,6 +253,8 @@ export const Dashboard: React.FC = () => {
                     : 'text-slate-600 hover:bg-slate-100'
                 )}
                 aria-label="Notifications"
+                aria-expanded={notificationsOpen}
+                aria-haspopup="menu"
               >
                 {notificationsOpen
                   ? <BellRing className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -294,9 +265,11 @@ export const Dashboard: React.FC = () => {
               {notificationsOpen && (
                 <div
                   className={cx(
-                    'absolute right-0 mt-3 w-80 max-w-[90vw] rounded-3xl overflow-hidden z-50',
+                    'absolute right-0 mt-3 w-80 rounded-3xl overflow-hidden z-50',
+                    // On small screens: constrain to viewport, solid background, scrollable
+                    'max-w-[calc(100vw-24px)] max-h-[80vh] overflow-y-auto',
                     highGraphics
-                      ? 'bg-white/95 backdrop-blur-2xl border border-slate-200/80 shadow-[0_20px_60px_-10px_rgba(79,70,229,0.2)] ring-1 ring-slate-900/5'
+                      ? 'bg-white border border-slate-200/80 shadow-[0_20px_60px_-10px_rgba(79,70,229,0.2)] ring-1 ring-slate-900/5'
                       : 'bg-white border border-slate-200 shadow-xl'
                   )}
                 >
@@ -334,6 +307,8 @@ export const Dashboard: React.FC = () => {
                 onClick={() => { setProfileOpen(!profileOpen); setNotificationsOpen(false); }}
                 type="button"
                 aria-label="Profile menu"
+                aria-expanded={profileOpen}
+                aria-haspopup="menu"
                 className={cx(
                   'flex items-center gap-2 p-1 pr-2.5 rounded-full transition-all duration-300 cursor-pointer select-none',
                   highGraphics
@@ -360,17 +335,23 @@ export const Dashboard: React.FC = () => {
 
               {profileOpen && (
                 <div
+                  role="menu"
                   className={cx(
-                    'absolute right-0 mt-3 w-80 max-w-[90vw] rounded-3xl overflow-hidden z-50',
+                    // Base layout: right-aligned, full border-radius, clipped
+                    'absolute right-0 mt-3 w-80 rounded-3xl overflow-hidden z-50',
+                    // Mobile safety: constrain width to viewport, max-height with scroll,
+                    // fully opaque background so page content is not visible through it.
+                    'max-w-[calc(100vw-24px)] max-h-[85vh] overflow-y-auto',
                     highGraphics
-                      ? 'bg-white/95 backdrop-blur-2xl border border-white/80 shadow-[0_25px_60px_-15px_rgba(79,70,229,0.25)] ring-1 ring-slate-900/5'
+                      ? 'bg-white border border-white/80 shadow-[0_25px_60px_-15px_rgba(79,70,229,0.25)] ring-1 ring-slate-900/5'
                       : 'bg-white border border-slate-200 shadow-xl'
                   )}
                 >
                   {highGraphics && (
-                    <div className="h-1 w-full bg-linear-to-r from-indigo-500 via-purple-500 to-pink-500" />
+                    <div className="h-1 w-full bg-linear-to-r from-indigo-500 via-purple-500 to-pink-500 shrink-0" />
                   )}
 
+                  {/* Profile header */}
                   <div className={cx(
                     'p-5 border-b border-slate-100',
                     highGraphics && 'bg-linear-to-b from-indigo-50/50 to-transparent'
@@ -432,10 +413,32 @@ export const Dashboard: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Menu items */}
                   <div className="p-2 space-y-1">
+
+                    {/* HOME — navigates to public landing page "/" */}
                     <button
+                      role="menuitem"
+                      onClick={() => { setProfileOpen(false); navigate('/'); }}
+                      className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-emerald-50/80 transition-all duration-200 cursor-pointer min-h-11"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors shrink-0">
+                          <Home className="w-4 h-4" />
+                        </div>
+                        <div className="text-left">
+                          <span className="text-xs font-bold text-slate-800 group-hover:text-emerald-600 block transition-colors">Home</span>
+                          <span className="text-[10px] text-slate-400">Back to IntellEdu website</span>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all" />
+                    </button>
+
+                    {/* DASHBOARD */}
+                    <button
+                      role="menuitem"
                       onClick={() => { handleTabChange('overview'); setProfileOpen(false); }}
-                      className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-indigo-50/80 transition-all duration-200 cursor-pointer"
+                      className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-indigo-50/80 transition-all duration-200 cursor-pointer min-h-11"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors shrink-0">
@@ -449,9 +452,11 @@ export const Dashboard: React.FC = () => {
                       <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all" />
                     </button>
 
+                    {/* ACCOUNT SETTINGS */}
                     <button
+                      role="menuitem"
                       onClick={() => { handleTabChange('settings'); setProfileOpen(false); }}
-                      className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50/80 transition-all duration-200 cursor-pointer"
+                      className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50/80 transition-all duration-200 cursor-pointer min-h-11"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:bg-slate-700 group-hover:text-white transition-colors shrink-0">
@@ -465,9 +470,11 @@ export const Dashboard: React.FC = () => {
                       <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
                     </button>
 
+                    {/* AI DOUBT SOLVER */}
                     <button
+                      role="menuitem"
                       onClick={() => { handleTabChange('doubts'); setProfileOpen(false); }}
-                      className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-violet-50/80 transition-all duration-200 cursor-pointer"
+                      className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-violet-50/80 transition-all duration-200 cursor-pointer min-h-11"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center group-hover:bg-violet-600 group-hover:text-white transition-colors shrink-0">
@@ -484,11 +491,13 @@ export const Dashboard: React.FC = () => {
 
                   <div className="h-px bg-linear-to-r from-transparent via-slate-200 to-transparent mx-3" />
 
+                  {/* SIGN OUT */}
                   <div className="p-2">
                     <button
+                      role="menuitem"
                       onClick={() => { setProfileOpen(false); handleLogout(); }}
                       type="button"
-                      className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-rose-50/80 transition-colors cursor-pointer"
+                      className="group w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-rose-50/80 transition-colors cursor-pointer min-h-11"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-colors shrink-0">
@@ -505,7 +514,16 @@ export const Dashboard: React.FC = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 xl:p-10 pb-24 lg:pb-8 w-full animate-fade-slide-up">
+        {/*
+          Main content area.
+          - pb-24 on mobile ensures content is never hidden behind the fixed bottom nav bar.
+          - env(safe-area-inset-bottom) further adds space for devices with home indicator bars (iPhone notch etc).
+          - lg:pb-8 restores normal padding on desktop (no bottom nav).
+        */}
+        <main
+          className="flex-1 p-3.5 sm:p-6 lg:p-8 xl:p-10 w-full animate-fade-slide-up"
+          style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}
+        >
           <Outlet />
         </main>
 

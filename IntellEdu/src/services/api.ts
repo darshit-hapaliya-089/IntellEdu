@@ -314,6 +314,8 @@ export interface DailyQuizzesResponse {
   date: string;
   resetsAt: string;
   grade: string;
+  total?: number;
+  completed?: number;
   quizzes: QuizData[];
 }
 
@@ -346,7 +348,7 @@ export interface QuizSubmitResult {
 }
 
 export const quizzesApi = {
-  getAll: (params?: { grade?: string; subject?: string }) => {
+  getAll: (params?: { grade?: string; subject?: string; search?: string }) => {
     const queryParams = new URLSearchParams();
     Object.entries(params ?? {}).forEach(([key, value]) => {
       if (value) queryParams.set(key, value);
@@ -364,8 +366,10 @@ export const quizzesApi = {
 
   getById: (id: string | number) => request<{ quiz: QuizData }>(`/quizzes/${id}`),
 
-  getMyResults: (page = 1) =>
-    request<{ results: QuizResultHistory[]; meta?: any }>(`/quizzes/my-results?page=${page}`),
+  getMyResults: (page = 1, scope: 'today' | 'all' = 'today') =>
+    request<{ scope: string; date: string; results: QuizResultHistory[]; meta?: any }>(
+      `/quizzes/my-results?page=${page}&scope=${scope}`
+    ),
 
   submit: (id: string | number, answers: number[], timeTakenSeconds?: number) =>
     request<QuizSubmitResult>(`/quizzes/${id}/submit`, {
