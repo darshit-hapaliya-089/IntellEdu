@@ -943,7 +943,7 @@ export const Quizzes: React.FC = () => {
           </p>
         </div>
         <Link
-          to="/dashboard/doubts"
+          to="/doubts"
           className="rounded-xl bg-violet-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-violet-600/20 hover:bg-violet-700 transition shrink-0"
         >
           Ask AI Tutor →

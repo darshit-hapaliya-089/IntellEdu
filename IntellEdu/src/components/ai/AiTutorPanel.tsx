@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Brain, Send, Sparkles, Trophy } from 'lucide-react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Brain, Send, Sparkles, Trophy, Flame, AlertCircle } from 'lucide-react';
 import { ChatSender } from './ChatBubble';
 import ChatBubble from './ChatBubble';
 import { usePerformanceMode } from '../../context/PerformanceModeContext';
@@ -28,22 +28,39 @@ export const AiTutorPanel: React.FC<AiTutorPanelProps> = ({ onOpenQuizzes }) => 
   const [input, setInput] = useState<string>('');
   const [thinking, setThinking] = useState<boolean>(false);
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [trialStatus, setTrialStatus] = useState<DoubtSolverStatus | null>(null);
+  const [aiStatus, setAiStatus] = useState<DoubtSolverStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [insufficientXp, setInsufficientXp] = useState<boolean>(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const aiLockedOut = Boolean(
-    trialStatus
-    && !trialStatus.trialActive
-    && trialStatus.trialStartedAt
-    && trialStatus.xpBalance < trialStatus.xpCostPerQuestion
-  );
+
+  const canAsk = aiStatus ? Boolean(aiStatus.canAsk) : true;
+  const isPaid = aiStatus?.mode === 'paid';
+  const costXp = aiStatus?.costXp ?? 10;
+  const xpAvailable = aiStatus?.xpAvailable ?? aiStatus?.currentXpBalance ?? 0;
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, thinking]);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const status = await doubtSolverApi.getStatus();
+      setAiStatus(status);
+      updateUser({ points: status.xpAvailable ?? status.currentXpBalance });
+      if (status.mode === 'paid' && !status.canAsk) {
+        setInsufficientXp(true);
+      } else {
+        setInsufficientXp(false);
+      }
+      return status;
+    } catch (err: unknown) {
+      console.warn('Could not refresh AI status:', err);
+      return null;
+    }
+  }, [updateUser]);
 
   useEffect(() => {
     let active = true;
@@ -65,28 +82,23 @@ export const AiTutorPanel: React.FC<AiTutorPanelProps> = ({ onOpenQuizzes }) => 
 
   useEffect(() => {
     let active = true;
-    doubtSolverApi.getStatus()
-      .then((status) => {
-        if (!active) return;
-        setTrialStatus(status);
-        updateUser({ points: status.currentXpBalance });
-      })
-      .catch((reason: unknown) => {
-        if (active) setError(reason instanceof Error ? reason.message : 'Could not load your AI trial and XP status.');
-      })
-      .finally(() => { if (active) setStatusLoading(false); });
+    setStatusLoading(true);
+    refreshStatus().finally(() => {
+      if (active) setStatusLoading(false);
+    });
     return () => { active = false; };
-  }, [updateUser]);
+  }, [refreshStatus]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     const question = input.trim();
-    if (!question || thinking) return;
+    if (!question || thinking || !canAsk) return;
 
     setMessages((prev) => [...prev, { id: `u-${Date.now()}`, sender: 'user', text: question }]);
     setInput('');
     setThinking(true);
     setError(null);
+    setInsufficientXp(false);
 
     try {
       const response = await doubtSolverApi.ask(question);
@@ -94,21 +106,20 @@ export const AiTutorPanel: React.FC<AiTutorPanelProps> = ({ onOpenQuizzes }) => 
         ...prev,
         { id: `a-${response.id}`, sender: 'ai', text: response.answer },
       ]);
-      if (typeof response.currentXpBalance === 'number') {
+      if (typeof response.xpAvailable === 'number') {
+        updateUser({ points: response.xpAvailable });
+      } else if (typeof response.currentXpBalance === 'number') {
         updateUser({ points: response.currentXpBalance });
       }
-      const updatedStatus = await doubtSolverApi.getStatus();
-      setTrialStatus(updatedStatus);
-      updateUser({ points: updatedStatus.currentXpBalance });
-    } catch (cause) {
+      await refreshStatus();
+    } catch (cause: any) {
+      const is402 = cause?.status === 402 || cause?.message?.includes('XP');
+      if (is402) {
+        setInsufficientXp(true);
+      }
       const message = cause instanceof Error ? cause.message : 'The AI service could not answer this question.';
       setError(message);
-      void doubtSolverApi.getStatus().then((status) => {
-        setTrialStatus(status);
-        updateUser({ points: status.currentXpBalance });
-      }).catch((statusError: unknown) => {
-        console.error('Could not refresh AI trial status after the request failed.', statusError);
-      });
+      await refreshStatus();
     } finally {
       setThinking(false);
     }
@@ -116,35 +127,80 @@ export const AiTutorPanel: React.FC<AiTutorPanelProps> = ({ onOpenQuizzes }) => 
 
   return (
     <div className="space-y-4 sm:space-y-5 w-full">
-      {/* Title & Quick Points Bar */}
+      {/* Title & Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">AI Instant Doubt Solver</h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Ask questions and review your saved conversations with the IntellEdu AI service.
+            Ask questions and get instant step-by-step guidance from your IntellEdu AI tutor.
           </p>
         </div>
-
       </div>
-      <section aria-live="polite" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-100 bg-violet-50 p-3 text-sm">
-        <p className="font-semibold text-violet-950">
-          {statusLoading
-            ? 'Checking your free trial and XP…'
-            : trialStatus?.trialActive
-              ? `Free AI trial · Day ${trialStatus.trialDay ?? 1} of 10 · ${trialStatus.trialDaysRemaining} days remaining`
-              : trialStatus && !trialStatus.trialStartedAt
-                ? `Free 10-day AI trial starts with your first question · ${trialStatus.xpBalance} XP available`
-              : trialStatus
-                ? `AI answer cost: ${trialStatus.xpCostPerQuestion} XP · ${trialStatus.xpBalance} XP available`
-                : 'AI trial and XP status is unavailable.'}
-        </p>
-        {!statusLoading && trialStatus && (
-          <span className="rounded-full bg-white px-3 py-1 font-bold text-violet-800">
-            {trialStatus.xpBalance} XP
+
+      {/* Mode & Streak/XP Status Banner */}
+      <section aria-live="polite" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-100 bg-violet-50 p-3.5 text-sm shadow-xs">
+        <div className="flex items-center gap-2">
+          {isPaid ? (
+            <Brain className="h-5 w-5 text-violet-600 shrink-0" />
+          ) : (
+            <Flame className="h-5 w-5 text-amber-500 shrink-0" />
+          )}
+          <p className="font-semibold text-violet-950">
+            {statusLoading ? (
+              'Checking your streak and AI billing status…'
+            ) : !isPaid ? (
+              aiStatus && aiStatus.daysToUnlockPaid > 0 ? (
+                `Free AI mode: ${aiStatus.daysToUnlockPaid} more streak ${aiStatus.daysToUnlockPaid === 1 ? 'day' : 'days'} until XP-based mode`
+              ) : (
+                'Free AI mode: Unlimited questions with 0 XP cost'
+              )
+            ) : (
+              `AI answer cost: ${costXp} XP · ${xpAvailable} XP available`
+            )}
+          </p>
+        </div>
+        {!statusLoading && (
+          <span className="rounded-full bg-white px-3.5 py-1 text-xs font-bold text-violet-800 shadow-xs border border-violet-100">
+            {xpAvailable} XP
           </span>
         )}
       </section>
-      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+
+      {/* Insufficient XP Callout Card */}
+      {insufficientXp && (
+        <div className="rounded-2xl border-2 border-amber-300 bg-amber-50/90 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-fade-slide-up">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-black text-amber-950">You need {costXp} XP to ask the AI</h3>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Solve quizzes to earn XP and continue asking questions. You currently have {xpAvailable} XP.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenQuizzes}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-xs transition active:scale-95 shrink-0 cursor-pointer"
+          >
+            <Trophy className="h-4 w-4" /> Go to Quizzes & Earn XP
+          </button>
+        </div>
+      )}
+
+      {/* Friendly Error Banner */}
+      {error && !insufficientXp && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs sm:text-sm text-rose-800 flex items-center justify-between gap-2 shadow-xs">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="text-rose-600 hover:text-rose-900 font-bold px-2 py-0.5 text-sm"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Chat Window */}
       <div
@@ -166,7 +222,9 @@ export const AiTutorPanel: React.FC<AiTutorPanelProps> = ({ onOpenQuizzes }) => 
             </div>
             <div className="min-w-0">
               <p className="text-sm font-extrabold text-slate-900 leading-tight truncate">IntellEdu AI Tutor</p>
-              <p className="text-[11px] text-slate-500">AI responses and conversation history are connected to your account</p>
+              <p className="text-[11px] text-slate-500">
+                {!isPaid ? 'Free mode active (0 XP per answer)' : `Paid mode active (${costXp} XP per answer)`}
+              </p>
             </div>
           </div>
         </div>
@@ -191,14 +249,15 @@ export const AiTutorPanel: React.FC<AiTutorPanelProps> = ({ onOpenQuizzes }) => 
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question…"
+            placeholder={!canAsk ? `Insufficient XP (${xpAvailable}/${costXp} XP) — solve quizzes to unlock` : "Ask a question in Maths, Science, English, etc…"}
             aria-label="Ask the AI tutor a question"
             className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 min-w-0 disabled:opacity-60"
-            disabled={aiLockedOut}
+            disabled={!canAsk || thinking}
           />
           <button
             type="submit"
-            disabled={thinking || !input.trim() || aiLockedOut}
+            disabled={thinking || !input.trim() || !canAsk}
+            title={!canAsk ? `You need ${costXp} XP to ask the AI tutor` : undefined}
             className={cx(
               'px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed',
               highGraphics
@@ -212,7 +271,11 @@ export const AiTutorPanel: React.FC<AiTutorPanelProps> = ({ onOpenQuizzes }) => 
         </form>
       </div>
 
-      <button type="button" onClick={onOpenQuizzes} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white">
+      <button
+        type="button"
+        onClick={onOpenQuizzes}
+        className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition active:scale-95 cursor-pointer"
+      >
         <Trophy className="h-4 w-4" /> Practice a server quiz
       </button>
     </div>

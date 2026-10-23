@@ -524,6 +524,13 @@ export interface DoubtResponse {
   subject?: string;
   createdAt: string;
   xpCost?: number;
+  mode?: 'free' | 'paid';
+  streakDays?: number;
+  freeStreakTarget?: number;
+  daysToUnlockPaid?: number;
+  costXp?: number;
+  xpAvailable?: number;
+  canAsk?: boolean;
   xpBalance?: number;
   currentXpBalance?: number;
   trialActive?: boolean;
@@ -532,14 +539,22 @@ export interface DoubtResponse {
 }
 
 export interface DoubtSolverStatus {
-  xpBalance: number;
-  currentXpBalance: number;
-  xpCostPerQuestion: number;
-  trialActive: boolean;
-  trialDay: number | null;
-  trialStartedAt: string | null;
-  trialExpiresAt: string | null;
-  trialDaysRemaining: number;
+  mode: 'free' | 'paid';
+  streakDays: number;
+  freeStreakTarget: number;
+  daysToUnlockPaid: number;
+  costXp: number;
+  xpAvailable: number;
+  canAsk: boolean;
+  aiAvailable: boolean;
+  xpBalance?: number;
+  currentXpBalance?: number;
+  xpCostPerQuestion?: number;
+  trialActive?: boolean;
+  trialDay?: number | null;
+  trialStartedAt?: string | null;
+  trialExpiresAt?: string | null;
+  trialDaysRemaining?: number;
 }
 
 export const doubtSolverApi = {
